@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # "!/bin/bash" indica qual interpretador deve ser usado para executar o script, nesse caso o bash
-
+export AWS_PAGER=""
 set -e # Faz com que o script pare a execução caso ocorra algum erro em algum comando evitando criar uma infraestrutura incompleta ou com erros
 
 clear # Limpa o terminal
@@ -13,7 +13,7 @@ echo -e "\n\n\n" # echo é o comando mais básico, ele volta uma mensagem no ter
 echo -e "\e[32m"
 
 # << = here document, serve para passar diversas linhas de texto em um comando, nesse caso o cat que concatena as linhas, deixando elas  como se fosse um único arquivo
-cat <<'ARTE ASCII' # '' define um marcador para o texto, nesse caso ARTE ASCII, que pode ser qualquer coisa, mas tem que ser a mesma coisa no início e no final
+cat <<'ARTE_ASCII' # '' define um marcador para o texto, nesse caso ARTE_ASCII, que pode ser qualquer coisa, mas tem que ser a mesma coisa no início e no final
        d8888 8888888b.         d8888 888b    888 8888888b.  888     888      8888888b. 8888888 .d8888b.  8888888 88888888888     d8888 888      
       d88888 888   Y88b       d88888 8888b   888 888  "Y88b 888     888      888  "Y88b  888  d88P  Y88b   888       888        d88888 888      
      d88P888 888    888      d88P888 88888b  888 888    888 888     888      888    888  888  888    888   888       888       d88P888 888      
@@ -22,16 +22,17 @@ cat <<'ARTE ASCII' # '' define um marcador para o texto, nesse caso ARTE ASCII, 
   d88P   888 888 T88b     d88P   888 888  Y88888 888    888 888     888      888    888  888  888    888   888       888    d88P   888 888      
  d8888888888 888  T88b   d8888888888 888   Y8888 888  .d88P Y88b. .d88P      888  .d88P  888  Y88b  d88P   888       888   d8888888888 888      
 d88P     888 888   T88b d88P     888 888    Y888 8888888P"   "Y88888P"       8888888P" 8888888 "Y8888P88 8888888     888  d88P     888 88888888                                                                                                                                              
-ARTE ASCII
+ARTE_ASCII
 echo -e "\e[0m"
 echo -e "\n\n\n"
 
-cat <<'ARTE ASCII'                                                                                                                                                                                                               
-▄█████ █████▄  ██████ ████▄  ██████ ███  ██ ▄█████ ██ ▄████▄ ██ ▄█████   ▄████▄ ██     ██ ▄█████ 
-██     ██▄▄██▄ ██▄▄   ██  ██ ██▄▄   ██ ▀▄██ ██     ██ ██▄▄██ ██ ▀▀▀▄▄▄   ██▄▄██ ██ ▄█▄ ██ ▀▀▀▄▄▄ 
-▀█████ ██   ██ ██▄▄▄▄ ████▀  ██▄▄▄▄ ██   ██ ▀█████ ██ ██  ██ ██ █████▀   ██  ██  ▀██▀██▀  █████▀                                                                                                                                                                                                                      
-ARTE ASCII
-
+cat <<'ARTE_ASCII'                                                                                                                                                                                                               
+   __________  __________  _______   _______________    _________
+  / ____/ __ \/ ____/ __ \/ ____/ | / / ____/  _/   |  /  _/ ___/
+ / /   / /_/ / __/ / / / / __/ /  |/ / /    / // /| |  / / \__ \ 
+/ /___/ _, _/ /___/ /_/ / /___/ /|  / /____/ // ___ |_/ / ___/ / 
+\____/_/ |_/_____/_____/_____/_/ |_/\____/___/_/  |_/___//____/                                                                                                                                                                                                                                                                                   
+ARTE_ASCII
 echo "========================================================================================================================================"
 
 # Essa parte é basicamente um AWS configure
@@ -41,8 +42,8 @@ echo -e "\e[34mJá digitou suas credenciais de acesso nas últimas 4 horas (não
 read resposta # read lê a resposta do usuário e armazena na variável 
 
 # Verifica a letra informa pelo usuário, se for diferente de "s", ele pede para o usuário informar as credenciais de acesso
-if [[ "$resposta" != "s" ]]; then
-    echo -e "\e[33mPara descobrir suas credenciais de acesso, acesse o console da AWS na web e execute o comando 'cat .aws/credentials'\e[0m"
+if [[ "$resposta" != "s" && "$resposta" != "S" ]]; then
+    echo -e "\e[32mPara descobrir suas credenciais de acesso, acesse o console da AWS na web e execute o comando 'cat .aws/credentials'\e[0m"
 
     # Pega a Acess Key
     echo "Digite o AWS Access Key ID:"
@@ -67,7 +68,7 @@ if [[ "$resposta" != "s" ]]; then
     # Deixa a região padrão como us-east-1
     aws configure set default.region "us-east-1"
 
-    echo -e "\e[32mCredenciais cadastradas com sucessos! Execute o programa novamente e responda com a letra "s".\e[0m"
+    echo -e "\e[32mCredenciais cadastradas com sucesso! Execute o programa novamente e responda com a letra 's'.\e[0m"
     exit 
 fi
 
@@ -78,105 +79,101 @@ fi
 VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=vpc-arandu" --query "Vpcs[0].VpcId" --output text)
 
 if [ "$VPC_ID" = "None" ] || [ -z "$VPC_ID" ]; then # Verifica se a variável VPC_ID é igual a "None" ou está vazia atráves do -z, o que significa que o VPC não existe, e se for o caso, ele cria o VPC
+    
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                 
+ _    ______  ______
+| |  / / __ \/ ____/
+| | / / /_/ / /     
+| |/ / ____/ /___   
+|___/_/    \____/                                                                                                                                                                                                                                                                                                                                                                                      
+ARTE_ASCII
+echo "========================================================================================================================================"
+
     echo -e "\n\e[31m(!) - VPC não existe\e[0m"
-    echo -e "\e[33m(!) - Criando VPC...\e[0m\n"
+    echo -e "\e[32m(!) - Criando VPC...\e[0m\n"
 
     # aws (início do comando), "ec2" (serviço que vai ser usado), create-vpc (ação que vai ser executada) e especificações com --
     # --cidr-block (opção para definir o bloco CIDR do VPC)
-    # Lembrando que CIDR é metodo de notação para definir intervalos de endereços IP, nesse caso o bloco CIDR é 192.168.0.0/24 que é o bloco de classe C, que tem 256 endereços IP disponíveis, 
-    # e o /24 indica que os primeiros 24 bits do endereço IP são fixos, ou seja, os primeiros 3 octetos (192.168.0) são fixos e o último octeto (0) pode variar de 0 a 255, 
-    # permitindo assim a criação de sub-redes dentro desse bloco CIDR
     # --tag-specifications (opção para definir as tags do VPC, nesse caso o nome do VPC é "vpc-arandu")
-    aws ec2 create-vpc --cidr-block 192.168.0.0/24 --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=vpc-arandu}]'
+    VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=vpc-arandu}]' --query 'Vpc.VpcId' --output text)
 
-    # Pega o atual ID do VPC criado
-    VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=vpc-arandu" --query "Vpcs[0].VpcId" --output text)
+    # Espera o VPC ficar disponível, para garantir que ele esteja pronto para ser usado antes de criar as subredes e os outros recursos que dependem do VPC
+    aws ec2 wait vpc-available --vpc-ids $VPC_ID
 
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                      
+   _____ __  ______  ____  __________  ___________
+  / ___// / / / __ )/ __ \/ ____/ __ \/ ____/ ___/
+  \__ \/ / / / __  / /_/ / __/ / / / / __/  \__ \ 
+ ___/ / /_/ / /_/ / _, _/ /___/ /_/ / /___ ___/ / 
+/____/\____/_____/_/ |_/_____/_____/_____//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+ARTE_ASCII
+echo "========================================================================================================================================"
 
-    echo -e "\e[33m(!) - Criando subred publica...\e[0m\n"
-    # Cria subred publica dentro do VPC criado
-    SUBNET_PUBLICA=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 192.168.0.0/27 --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-arandu-publica}]' --query 'Subnet.SubnetId' --output text)
+    echo -e "\e[32m(!) - Criando subrede publica Frontend...\e[0m\n"
+    # Cria subred do frontend dentro do VPC criado
+    SUBNET_PUBLICA=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/24 --availability-zone us-east-1a --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-frontend-publica-arandu}]' --query 'Subnet.SubnetId' --output text)
+    aws ec2 modify-subnet-attribute --subnet-id $SUBNET_PUBLICA --map-public-ip-on-launch
 
-    echo -e "\e[33m(!) - Criando subred privada...\e[0m\n"
-    # Cria subred privada dentro do VPC criado
-    SUBNET_PRIVADA=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 192.168.0.32/27 --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-arandu-privada}]' --query 'Subnet.SubnetId' --output text)
+    echo -e "\e[32m(!) - Criando subrede privada Backend...\e[0m\n"
+    # Cria subred do backend dentro do VPC criado
+    SUBNET_PRIVADA=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.2.0/24 --availability-zone us-east-1a --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-backend-privada-arandu}]' --query 'Subnet.SubnetId' --output text)
 
-    # Ambas subredes estão com bloco CIDR de classe C, com 32 endereços IP disponíveis
+    echo -e "\e[32m(!) - Criando subrede privada DB...\e[0m\n"
+    SUBNET_DB=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.3.0/24 --availability-zone us-east-1a --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-privada-db-arandu}]' --query 'Subnet.SubnetId' --output text)
 
-    # Criando par de chaves
-    echo -e "\e[33m(!) - Verificando se a chave .pem já existe...\e[0m\n"
+    # Ambas subredes estão com bloco CIDR /24, com 256 endereços IP disponíveis
 
-    if [ -f "arandu-key.pem" ]; then
-        echo -e "\e[31m(!) - Arquivo arandu-key.pem já existe. Deletando...\e[0m\n"
-        rm -f arandu-key.pem
-    fi
-
-    echo -e "\e[33m(!) - Criando par de chaves...\e[0m\n"
-    aws ec2 create-key-pair --key-name arandu-key --key-type rsa --query 'KeyMaterial' --output text > arandu-key.pem
-
-    # Alterando as permissões do arquivo da chave privada para que apenas o proprietário possa ler, o que é necessário para usar a chave com o SSH
-    chmod 400 arandu-key.pem
-
-    # Criando security group
-    echo -e "\e[33m(!) - Criando security group...\e[0m\n"
-    SECURITY_GROUP_ID=$(aws ec2 create-security-group --group-name arandu-sg --description "security group arandu" --vpc-id $VPC_ID --query 'GroupId' --output text)
-
-    # Liberando a porta 22 (SSH) para acesso remoto
-    echo -e "\e[33m(!) - Liberando porta 22 (SSH)...\e[0m\n"
-    aws ec2 authorize-security-group-ingress --group-id $SECURITY_GROUP_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
-
-    # Modifica a subrede pública para que as instâncias lançadas nela recebam um IP público automaticamente
-    echo -e "\e[33m(!) - Modificando atributo da subrede pública para atribuir IPs públicos automaticamente...\e[0m\n"
-    aws ec2 modify-subnet-attribute --subnet-id $SUBNET_PUBLICA --map-public-ip-on-launch 
-
-    echo -e "\e[33m(!) - Selecionando imagem AMI Ubuntu para criação das instâncias...\e[0m\n"
-    IMAGEM_ID=$(aws ec2 describe-images --owners 099720109477 --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text)
-
-# Criando uma instância EC2 na subrede privada do VPC criado, usando a imagem AMI do Ubuntu 22.04, o tipo de instância t2.micro, a chave de acesso arandu-key, o grupo de segurança criado e a tag "Name" com o valor "ec2-arandu-privada"
-echo -e "\e[33m(!) - Criando instância EC2 pública...\e[0m\n"
-aws ec2 run-instances \
---image-id $IMAGEM_ID \
---instance-type t2.micro \
---key-name arandu-key \
---subnet-id $SUBNET_PUBLICA \
---security-group-ids $SECURITY_GROUP_ID \
---associate-public-ip-address \
---tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-publica}]'
-
-# Criando a instância na subrede privada, sem associar um IP público, o que significa que ela só poderá ser acessada através da instância pública, utilizando o SSH com a chave privada criada anteriormente
-echo -e "\e[33m(!) - Criando instância EC2 privada...\e[0m\n"
-aws ec2 run-instances \
---image-id $IMAGEM_ID \
---instance-type t2.micro \
---key-name arandu-key \
---subnet-id $SUBNET_PRIVADA \
---security-group-ids $SECURITY_GROUP_ID \
---tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-privada}]'
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+    _____   __________________  _   ______________   _________  _____________       _______  _______
+   /  _/ | / /_  __/ ____/ __ \/ | / / ____/_  __/  / ____/   |/_  __/ ____/ |     / /   \ \/ / ___/
+   / //  |/ / / / / __/ / /_/ /  |/ / __/   / /    / / __/ /| | / / / __/  | | /| / / /| |\  /\__ \ 
+ _/ // /|  / / / / /___/ _, _/ /|  / /___  / /    / /_/ / ___ |/ / / /___  | |/ |/ / ___ |/ /___/ / 
+/___/_/ |_/ /_/ /_____/_/ |_/_/ |_/_____/ /_/     \____/_/  |_/_/ /_____/  |__/|__/_/  |_/_//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+ARTE_ASCII
+echo "========================================================================================================================================"
 
     # Criando um Internet Gateway, que é um componente que permite a comunicação entre o VPC e a internet, e associando ele ao VPC criado
-    echo -e "\e[33m(!) - Criando Internet Gateway...\e[0m\n"
+    echo -e "\e[32m(!) - Criando Internet Gateway...\e[0m\n"
     INTERNET_GATEWAY_ID=$(aws ec2 create-internet-gateway --tag-specifications 'ResourceType=internet-gateway,Tags=[{Key=Name,Value=internet-gateway-arandu}]' --query 'InternetGateway.InternetGatewayId' --output text)
 
     # Associando o Internet Gateway ao VPC criado
-    echo -e "\e[33m(!) - Associando Internet Gateway ao VPC...\e[0m\n"
+    echo -e "\e[32m(!) - Associando Internet Gateway ao VPC...\e[0m\n"
     aws ec2 attach-internet-gateway --internet-gateway-id $INTERNET_GATEWAY_ID --vpc-id $VPC_ID
 
+cat <<'ARTE_ASCII'                                                                                                                       
+    ____  ____  __  ______________   _________    ____  __    ______   ____    __  ____  __    _____________ 
+   / __ \/ __ \/ / / /_  __/ ____/  /_  __/   |  / __ )/ /   / ____/  / __ \__/_/_/ __ )/ /   /  _/ ____/   |
+  / /_/ / / / / / / / / / / __/      / / / /| | / __  / /   / __/    / /_/ / / / / __  / /    / // /   / /| |
+ / _, _/ /_/ / /_/ / / / / /___     / / / ___ |/ /_/ / /___/ /___   / ____/ /_/ / /_/ / /____/ // /___/ ___ |
+/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/    \____/_____/_____/___/\____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+ARTE_ASCII
+echo "========================================================================================================================================"
+
     # Criando uma tabela de rotas para o VPC criado, e associando ela à subrede pública, para que as instâncias na subrede pública possam acessar a internet através do Internet Gateway criado
-    echo -e "\e[33m(!) - Criando tabela de rotas pública...\e[0m\n"
+    echo -e "\e[32m(!) - Criando tabela de rotas pública...\e[0m\n"
     ROTA_PUBLICA_ID=$(aws ec2 create-route-table --vpc-id $VPC_ID --tag-specifications 'ResourceType=route-table,Tags=[{Key=Name,Value=rota-publica-arandu}]' --query 'RouteTable.RouteTableId' --output text)
 
     # Criando uma rota na tabela de rotas criada, para que o tráfego destinado à internet (0.0.0.0/0) e seja encaminhado para o Internet Gateway
-    echo -e "\e[33m(!) - Criando rota para internet...\e[0m\n"
+    echo -e "\e[32m(!) - Criando rota para internet...\e[0m\n"
     aws ec2 create-route --route-table-id $ROTA_PUBLICA_ID --destination-cidr-block 0.0.0.0/0 --gateway-id $INTERNET_GATEWAY_ID
 
     # Associando a tabela de rotas criada à subrede pública, para que as instâncias na subrede pública possam acessar a internet através do Internet Gateway criado
-    echo -e "\e[33m(!) - Associando tabela de rotas à subrede pública...\e[0m\n"
+    echo -e "\e[32m(!) - Associando tabela de rotas à subrede pública...\e[0m\n"
     aws ec2 associate-route-table --route-table-id $ROTA_PUBLICA_ID --subnet-id $SUBNET_PUBLICA
 
-    echo -e "\e[33m(!) - Alocando endereço elástico para o NAT Gateway...\e[0m\n"
+cat <<'ARTE_ASCII'                                                                                                                                     
+    _   _____  ______
+   / | / /   |/_  __/
+  /  |/ / /| | / /   
+ / /|  / ___ |/ /    
+/_/ |_/_/  |_/_/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+ARTE_ASCII
+echo "========================================================================================================================================"
+
+    echo -e "\e[32m(!) - Alocando endereço elástico para o NAT Gateway...\e[0m\n"
     IP_ELASTICO_NAT_ID=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
 
-echo -e "\e[33m(!) - Criando NAT Gateway...\e[0m\n"
+echo -e "\e[32m(!) - Criando NAT Gateway...\e[0m\n"
 NAT_ID=$(aws ec2 create-nat-gateway \
 --subnet-id $SUBNET_PUBLICA \
 --allocation-id $IP_ELASTICO_NAT_ID \
@@ -185,19 +182,123 @@ NAT_ID=$(aws ec2 create-nat-gateway \
 --output text)
 
     # Espera o NAT Gateway ficar disponível, para garantir que ele esteja pronto para ser usado antes de criar a rota na tabela de rotas da subrede privada
+    echo -e "\e[32m(!) - Esperando NAT Gateway ficar disponível...\e[0m\n"
     aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT_ID
 
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                               
+    ____  ____  __  ______________   _________    ____  __    ______   ____  ____  _____    _____    ____  ___ 
+   / __ \/ __ \/ / / /_  __/ ____/  /_  __/   |  / __ )/ /   / ____/  / __ \/ __ \/  _/ |  / /   |  / __ \/   |
+  / /_/ / / / / / / / / / / __/      / / / /| | / __  / /   / __/    / /_/ / /_/ // / | | / / /| | / / / / /| |
+ / _, _/ /_/ / /_/ / / / / /___     / / / ___ |/ /_/ / /___/ /___   / ____/ _, _// /  | |/ / ___ |/ /_/ / ___ |
+/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/   /_/ |_/___/  |___/_/  |_/_____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+ARTE_ASCII
+echo "========================================================================================================================================"
+
     # Criando uma tabela de rotas para o VPC criado, e associando ela à subrede privada, para que as instâncias na subrede privada possam acessar a internet através do NAT Gateway criado
-    echo -e "\e[33m(!) - Criando tabela de rotas privada...\e[0m\n"
+    echo -e "\e[32m(!) - Criando tabela de rotas privada...\e[0m\n"
     ROTA_PRIVADA_ID=$(aws ec2 create-route-table --vpc-id $VPC_ID --tag-specifications 'ResourceType=route-table,Tags=[{Key=Name,Value=rota-privada-arandu}]' --query 'RouteTable.RouteTableId' --output text)
 
     # Criando uma rota na tabela de rotas criada, para que o tráfego destinado à internet (
-    echo -e "\e[33m(!) - Criando rota para internet...\e[0m\n"
+    echo -e "\e[32m(!) - Criando rota para internet...\e[0m\n"
     aws ec2 create-route --route-table-id $ROTA_PRIVADA_ID --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_ID
 
     # Associando a tabela de rotas criada à subrede privada, para que as instâncias na subrede privada possam acessar a internet através do NAT Gateway criado
-    echo -e "\e[33m(!) - Associando tabela de rotas à subrede privada...\e[0m\n"
+    echo -e "\e[32m(!) - Associando tabela de rotas à subrede privada...\e[0m\n"
     aws ec2 associate-route-table --route-table-id $ROTA_PRIVADA_ID --subnet-id $SUBNET_PRIVADA
+    aws ec2 associate-route-table --subnet-id $SUBNET_DB --route-table-id $ROTA_PRIVADA_ID
+
+
+cat <<'ARTE_ASCII'                                                                                                                                                          
+   _____ ______________  ______  ____________  __   __________  ____  __  ______  _____
+  / ___// ____/ ____/ / / / __ \/  _/_  __/\ \/ /  / ____/ __ \/ __ \/ / / / __ \/ ___/
+  \__ \/ __/ / /   / / / / /_/ // /  / /    \  /  / / __/ /_/ / / / / / / / /_/ /\__ \ 
+ ___/ / /___/ /___/ /_/ / _, _// /  / /     / /  / /_/ / _, _/ /_/ / /_/ / ____/___/ / 
+/____/_____/\____/\____/_/ |_/___/ /_/     /_/   \____/_/ |_|\____/\____/_/    /____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+ARTE_ASCII
+echo "========================================================================================================================================"
+
+echo -e "\e[32m(!) - Criando security group do frontend...\e[0m\n"
+SG_FRONTEND=$(aws ec2 create-security-group --group-name arandu-sg-frontend --description "SG Frontend Arandu" --vpc-id $VPC_ID --query 'GroupId' --output text)
+aws ec2 authorize-security-group-ingress --group-id $SG_FRONTEND --protocol tcp --port 22 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $SG_FRONTEND --protocol tcp --port 80 --cidr 0.0.0.0/0
+
+aws ec2 create-tags --resources $SG_FRONTEND --tags Key=Name,Value=arandu-sg-frontend
+
+echo -e "\e[32m(!) - Criando security group do backend...\e[0m\n"
+
+SG_BACKEND=$(aws ec2 create-security-group --group-name arandu-sg-backend --description "SG Backend Arandu" --vpc-id $VPC_ID --query 'GroupId' --output text)
+aws ec2 create-tags --resources $SG_BACKEND --tags Key=Name,Value=arandu-sg-backend
+aws ec2 authorize-security-group-ingress --group-id $SG_BACKEND --protocol tcp --port 8080 --source-group $SG_FRONTEND
+aws ec2 authorize-security-group-ingress --group-id $SG_BACKEND --protocol tcp --port 22 --source-group $SG_FRONTEND
+
+echo -e "\e[32m(!) - Criando security group do banco...\e[0m\n"
+SG_DB=$(aws ec2 create-security-group --group-name arandu-sg-db --description "SG Database Arandu" --vpc-id $VPC_ID --query 'GroupId' --output text)
+aws ec2 create-tags --resources $SG_DB --tags Key=Name,Value=arandu-sg-db
+aws ec2 authorize-security-group-ingress --group-id $SG_DB --protocol tcp --port 3306 --source-group $SG_BACKEND
+aws ec2 authorize-security-group-ingress --group-id $SG_DB --protocol tcp --port 22 --source-group $SG_BACKEND
+
+
+cat <<'ARTE_ASCII'  
+    _____   _____________ //|  _   _______________   _____
+   /  _/ | / / ___/_  __/|/|| / | / / ____/  _/   | / ___/
+   / //  |/ /\__ \ / / / _ | /  |/ / /    / // /| | \__ \ 
+ _/ // /|  /___/ // / / __ |/ /|  / /____/ // ___ |___/ / 
+/___/_/ |_//____//_/ /_/ |_/_/ |_/\____/___/_/  |_/____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+ARTE_ASCII
+echo "========================================================================================================================================"
+
+    # Salvando ID da imagem Ubuntu para criação das instâncias
+    echo -e "\e[32m(!) - Selecionando imagem AMI Ubuntu para criação das instâncias...\e[0m\n"
+    IMAGEM_ID=$(aws ec2 describe-images --owners 099720109477 --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text)
+
+    # Criando par de chaves
+    echo -e "\e[32m(!) - Verificando se a chave .pem já existe...\e[0m\n"
+
+    if [ -f "arandu-key.pem" ]; then
+        aws ec2 delete-key-pair --key-name arandu-key 2>/dev/null || true
+        echo -e "\e[31m(!) - Arquivo arandu-key.pem já existe. Deletando...\e[0m\n"
+        rm -f arandu-key.pem
+    fi
+    
+    echo -e "\e[32m(!) - Criando par de chaves...\e[0m\n"
+    aws ec2 create-key-pair --key-name arandu-key --key-type rsa --query 'KeyMaterial' --output text > arandu-key.pem
+
+    # Alterando as permissões do arquivo da chave privada para que apenas o proprietário possa ler, o que é necessário para usar a chave com o SSH
+    chmod 400 arandu-key.pem
+
+# Criando uma instância EC2 na subrede privada do VPC criado, usando a imagem AMI do Ubuntu 22.04, o tipo de instância t2.micro, a chave de acesso arandu-key, o grupo de segurança criado e a tag "Name" com o valor "ec2-arandu-privada"
+echo -e "\e[32m(!) - Criando instância EC2 pública do frontend...\e[0m\n"
+aws ec2 run-instances \
+--image-id $IMAGEM_ID \
+--instance-type t2.micro \
+--key-name arandu-key \
+--subnet-id $SUBNET_PUBLICA \
+--private-ip-address 10.0.1.10 \
+--security-group-ids $SG_FRONTEND \
+--associate-public-ip-address \
+--tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-frontend},{Key=Role,Value=frontend}]'
+
+# Criando a instância na subrede privada, sem associar um IP público, o que significa que ela só poderá ser acessada através da instância pública, utilizando o SSH com a chave privada criada anteriormente
+echo -e "\e[32m(!) - Criando instância EC2 privada do backend...\e[0m\n"
+aws ec2 run-instances \
+--image-id $IMAGEM_ID \
+--instance-type t2.micro \
+--key-name arandu-key \
+--subnet-id $SUBNET_PRIVADA \
+--private-ip-address 10.0.2.10 \
+--security-group-ids $SG_BACKEND \
+--tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-backend},{Key=Role,Value=backend}]'
+
+# Criando a instância na subrede privada de banco, sem associar um IP público, o que significa que ela só poderá ser acessada através da instância pública, utilizando o SSH com a chave privada criada anteriormente, e essa instância será utilizada para rodar o banco de dados, por isso o nome "ec2-arandu-db"
+echo -e "\e[32m(!) - Criando instância EC2 banco...\e[0m\n"
+aws ec2 run-instances \
+--image-id $IMAGEM_ID \
+--instance-type t2.micro \
+--key-name arandu-key \
+--subnet-id $SUBNET_DB \
+--private-ip-address 10.0.3.10 \
+--security-group-ids $SG_DB \
+--tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-db},{Key=Role,Value=db}]'
 
     echo -e "\e[32mInfraestrutura criada com sucesso!\e[0m"
 
@@ -207,39 +308,37 @@ else
     echo "2 - Deletar TUDO da VPC"
     read opcao
 
-    # Verifica a opção escolhida pelo usuário, se for 1, ele mantém a infraestrutura e encerra o script, se for 2, ele executa os comandos para deletar toda a infraestrutura criada, incluindo as instâncias, o NAT Gateway, o Internet Gateway, as subredes, as tabelas de rotas, o security group e o par de chaves
     if [[ "$opcao" == "2" ]]; then
 
-        # Para encerrar as instâncias, ele primeiro pega o ID de todas as instâncias que estão rodando dentro do VPC criado
-        echo -e "\e[33m(!) - Encerrando instâncias...\e[0m\n"
+        echo -e "\e[32m(!) - Encerrando instâncias...\e[0m\n"
+
         INSTANCIAS=$(aws ec2 describe-instances --filters "Name=vpc-id,Values=$VPC_ID" --query "Reservations[].Instances[].InstanceId" --output text)
 
-        # Verifica se a variável INSTANCIAS não está vazia, o que significa que existem instâncias rodando dentro do VPC, e se for o caso, ele encerra as instâncias
         if [ -n "$INSTANCIAS" ]; then
             aws ec2 terminate-instances --instance-ids $INSTANCIAS
             aws ec2 wait instance-terminated --instance-ids $INSTANCIAS
         fi
 
-        # Depois de encerrar as instâncias, ele espera 30 segundos para garantir que as instâncias sejam encerradas completamente antes de tentar deletar os outros recursos, como o NAT Gateway e o Internet Gateway, que dependem das instâncias para serem usados
-        echo -e "\e[33m(!) - Removendo NAT Gateway...\e[0m\n"
-        NAT_ID=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[].NatGatewayId" --output text)
 
-        if [ -n "$NAT_ID" ]; then
-            aws ec2 delete-nat-gateway --nat-gateway-id $NAT_ID
-            aws ec2 wait nat-gateway-deleted --nat-gateway-ids $NAT_ID # Depois de esperar o NAT Gateway ser deletado, ele espera mais 30 segundos para garantir que o NAT Gateway seja deletado completamente antes de tentar deletar o Internet Gateway, que depende do NAT Gateway para ser usado
-        fi
-        
-        
-        echo -e "\e[33m(!) - Liberando Elastic IP...\e[0m\n"
-        EIP_ALLOC=$(aws ec2 describe-addresses --query "Addresses[].AllocationId" --output text) # Pega o ID de alocação do Elastic IP criado para o NAT Gateway, para que ele possa ser liberado depois que o NAT Gateway for deletado, já que um Elastic IP só pode ser associado a um recurso, como uma instância ou um NAT Gateway, e se o recurso for deletado, o Elastic IP fica associado a nada, e para evitar cobranças desnecessárias, é importante liberar o Elastic IP quando ele não estiver mais sendo usado
+        echo -e "\e[32m(!) - Removendo NAT Gateway...\e[0m\n"
 
-        if [ -n "$EIP_ALLOC" ]; then # Verifica se a variável EIP_ALLOC não está vazia, o que significa que existe um Elastic IP alocado, e se for o caso, ele libera o Elastic IP
-            aws ec2 release-address --allocation-id $EIP_ALLOC
-        fi
+        NAT_IDS=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[].NatGatewayId" --output text)
+
+        for nat in $NAT_IDS; do
+            if [[ "$EIP_ALLOC" != "None" && -n "$EIP_ALLOC" ]]; then
+                aws ec2 release-address --allocation-id $EIP_ALLOC 2>/dev/null || true
+            fi
+
+            aws ec2 delete-nat-gateway --nat-gateway-id $nat
+            aws ec2 wait nat-gateway-deleted --nat-gateway-ids $nat
+
+            if [ -n "$EIP_ALLOC" ]; then
+                aws ec2 release-address --allocation-id $EIP_ALLOC 2>/dev/null || true
+            fi
+        done
 
 
-        # Removendo rotas de acordo com a VPC
-        echo -e "\e[33m(!) - Removendo tabelas de rota...\e[0m\n"
+        echo -e "\e[32m(!) - Removendo tabelas de rota...\e[0m\n"
 
         ROUTE_TABLES=$(aws ec2 describe-route-tables \
         --filters "Name=vpc-id,Values=$VPC_ID" \
@@ -248,68 +347,101 @@ else
 
         for rt in $ROUTE_TABLES; do
 
-            # Pega IDs das associações não principais
             ASSOCIATIONS=$(aws ec2 describe-route-tables \
             --route-table-ids $rt \
             --query "RouteTables[].Associations[?Main==\`false\`].RouteTableAssociationId" \
             --output text)
 
-            # Remove associações
             for assoc in $ASSOCIATIONS; do
                 aws ec2 disassociate-route-table --association-id $assoc
             done
 
-            # Deleta rotas
             aws ec2 delete-route-table --route-table-id $rt
-
         done
 
 
-        echo -e "\e[33m(!) - Removendo Internet Gateway...\e[0m\n"
-        # Para remover o Internet Gateway, ele primeiro pega o ID do Internet Gateway associado ao VPC criado, e se existir um Internet Gateway associado, ele desanexa o Internet Gateway do VPC e depois deleta o Internet Gateway, lembrando que um Internet Gateway só pode ser associado a um VPC, e para deletar um Internet Gateway, ele precisa ser desanexado do VPC primeiro
+        echo -e "\e[32m(!) - Removendo Internet Gateway...\e[0m\n"
+
         IGW=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$VPC_ID" --query "InternetGateways[].InternetGatewayId" --output text)
 
-        # Verifica se a variável IGW não está vazia, o que significa que existe um Internet Gateway associado ao VPC, e se for o caso, ele desanexa o Internet Gateway do VPC e depois deleta o Internet Gateway
         if [ -n "$IGW" ]; then
             aws ec2 detach-internet-gateway --internet-gateway-id $IGW --vpc-id $VPC_ID
             aws ec2 delete-internet-gateway --internet-gateway-id $IGW
         fi
 
 
-        echo -e "\e[33m(!) - Removendo subnets...\e[0m\n"
-        # Para remover as subredes, ele primeiro pega o ID de todas as subredes associadas ao VPC criado, e se existirem subredes associadas, ele deleta as subredes, lembrando que para deletar uma subrede, ela precisa estar vazia, ou seja, não pode ter instâncias rodando dentro dela, e como as instâncias já foram encerradas no início do processo de deleção da infraestrutura, as subredes já estão vazias e podem ser deletadas sem problemas
+        echo -e "\e[32m(!) - Removendo subnets...\e[0m\n"
+
         SUBNETS=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[].SubnetId" --output text)
-        
-        # Verifica se a variável SUBNETS não está vazia, o que significa que existem subredes associadas ao VPC, e se for o caso, ele deleta as subredes
+
         for s in $SUBNETS; do
             aws ec2 delete-subnet --subnet-id $s
         done
 
 
-        echo -e "\e[33m(!) - Removendo security group...\e[0m\n"
+        echo -e "\e[32m(!) - Removendo interfaces de rede...\e[0m\n"
 
-        # Para remover o security group, ele primeiro pega o ID do security group criado dentro do VPC, e se existir um security group criado, ele deleta o security group, lembrando que o security group padrão do VPC não pode ser deletado, por isso o filtro para pegar apenas os security groups que não são o padrão
+        ENIS=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkInterfaces[].NetworkInterfaceId" --output text)
+
+        for eni in $ENIS; do
+            aws ec2 delete-network-interface --network-interface-id $eni 2>/dev/null || true
+        done
+
+        echo -e "\e[32m(!) - Removendo security groups...\e[0m\n"
+
         SG=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text)
 
-        # Verifica se a variável SG não está vazia, o que significa que existe um security group criado dentro do VPC, e se for o caso, ele deleta o security group
-        if [ -n "$SG" ]; then
-            aws ec2 delete-security-group --group-id $SG
-        fi
+        echo -e "\e[32m(!) - Limpando regras de security groups...\e[0m\n"
 
-        echo -e "\e[33m(!) - Removendo key pair...\e[0m\n"
+        for sg in $SG; do
 
-        # Para remover o par de chaves, ele deleta o par de chaves criado, e depois remove o arquivo da chave privada do sistema, lembrando que para deletar um par de chaves, ele precisa ser deletado na AWS primeiro, para garantir que ele não seja mais usado para acessar as instâncias, e depois o arquivo da chave privada pode ser removido do sistema para evitar confusões ou acessos indesejados no futuro
-        aws ec2 delete-key-pair --key-name arandu-key || true
+            INGRESS_RULES=$(aws ec2 describe-security-groups \
+            --group-ids $sg \
+            --query "SecurityGroups[].IpPermissions" \
+            --output json)
+
+            if [ "$INGRESS_RULES" != "[]" ]; then
+                aws ec2 revoke-security-group-ingress \
+                --group-id $sg \
+                --ip-permissions "$INGRESS_RULES" 2>/dev/null || true
+            fi
+
+
+            EGRESS_RULES=$(aws ec2 describe-security-groups \
+            --group-ids $sg \
+            --query "SecurityGroups[].IpPermissionsEgress" \
+            --output json)
+
+            if [ "$EGRESS_RULES" != "[]" ]; then
+                aws ec2 revoke-security-group-egress \
+                --group-id $sg \
+                --ip-permissions "$EGRESS_RULES" 2>/dev/null || true
+            fi
+
+        done
+
+        echo -e "\e[32m(!) - Deletando security groups...\e[0m"
+
+        for sg in $SG; do
+            aws ec2 delete-security-group --group-id $sg 2>/dev/null || true
+        done
+
+        echo -e "\e[32m(!) - Removendo key pair...\e[0m\n"
+
+        aws ec2 delete-key-pair --key-name arandu-key 2>/dev/null || true
         rm -f arandu-key.pem
 
 
-        echo -e "\e[33m(!) - Deletando VPC...\e[0m\n"
+        echo -e "\e[32m(!) - Deletando VPC...\e[0m\n"
 
-        # Para deletar o VPC, ele deleta o VPC criado, lembrando que para deletar um VPC, ele precisa estar vazio, ou seja, não pode ter instâncias rodando dentro dele, não pode ter subredes associadas, não pode ter Internet Gateway associado, e não pode ter tabelas de rotas associadas, e como todos esses recursos já foram deletados no processo de deleção da infraestrutura, o VPC já está vazio e pode ser deletado sem problemas
+        aws ec2 wait vpc-available --vpc-ids $VPC_ID
+
+        sleep 180
+
         aws ec2 delete-vpc --vpc-id $VPC_ID
+
 
         echo -e "\e[32mInfraestrutura removida com sucesso!\e[0m"
 
     fi
 fi
-
