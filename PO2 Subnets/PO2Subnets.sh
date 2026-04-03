@@ -14,24 +14,24 @@ echo -e "\e[32m"
 
 # << = here document, serve para passar diversas linhas de texto em um comando, nesse caso o cat que concatena as linhas, deixando elas  como se fosse um único arquivo
 cat <<'ARTE_ASCII' # '' define um marcador para o texto, nesse caso ARTE_ASCII, que pode ser qualquer coisa, mas tem que ser a mesma coisa no início e no final
-        d8888 8888888b.         d8888 888b    888 8888888b.  888     888      8888888b. 8888888 .d8888b.  8888888 88888888888     d8888 888      
-       d88888 888   Y88b       d88888 8888b   888 888   "Y88b 888     888      888   "Y88b  888  d88P   Y88b   888       888        d88888 888      
-      d88P888 888    888      d88P888 88888b  888 888     888 888     888      888    888  888  888    888   888       888       d88P888 888      
-     d88P 888 888   d88P     d88P 888 888Y88b 888 888     888 888     888      888    888  888  888           888       888      d88P 888 888      
-    d88P  888 8888888P"     d88P  888 888 Y88b888 888     888 888     888      888    888  888  888  88888    888       888     d88P  888 888      
-   d88P   888 888 T88b     d88P   888 888  Y88888 888     888 888     888      888    888  888  888    888    888       888    d88P   888 888      
+        d8888 8888888b.        d8888 888b    888 8888888b.  888     888      8888888b. 8888888 .d8888b.  8888888 88888888888     d8888 888      
+       d88888 888   Y88b      d88888 8888b   888 888  "Y88b 888     888      888   "Y88b  888  d88P   Y88b   888       888        d88888 888      
+      d88P888 888    888     d88P888 88888b  888 888    888 888     888      888    888  888  888    888   888       888       d88P888 888      
+     d88P 888 888   d88P     d88P 888 888Y88b 888 888    888 888     888      888    888  888  888         888       888      d88P 888 888      
+    d88P  888 8888888P"     d88P  888 888 Y88b888 888    888 888     888      888    888  888  888  88888    888       888     d88P  888 888      
+   d88P   888 888 T88b     d88P   888 888  Y88888 888    888 888     888      888    888  888  888    888    888       888    d88P   888 888      
   d8888888888 888  T88b   d8888888888 888   Y8888 888  .d88P Y88b. .d88P      888  .d88P  888  Y88b  d88P    888       888   d8888888888 888      
- d88P     888 888   T88b d88P     888 888    Y888 8888888P"   "Y88888P"       8888888P" 8888888 "Y8888P88 8888888     888  d88P     888 88888888                                                                                                                                                                                                                                                                        
+ d88P     888 888   T88b d88P     888 888    Y888 8888888P"   "Y88888P"       8888888P" 8888888 "Y8888P88 8888888     888  d88P     888 88888888                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ARTE_ASCII
 echo -e "\e[0m"
 echo -e "\n\n\n"
 
-cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                     
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
     __________  __________  _______   _______________    _________
    / ____/ __ \/ ____/ __ \/ ____/ | / / ____/  _/   |  /  _/ ___/
   / /   / /_/ / __/ / / / / __/ /  |/ / /    / // /| |  / / \__ \ 
  / /___/ _, _/ /___/ /_/ / /___/ /|  / /____/ // ___ |_/ / ___/ / 
- \____/_/ |_/_____/_____/_____/_/ |_/\____/___/_/  |_/___//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+ \____/_/ |_/_____/_____/_____/_/ |_/\____/___/_/  |_/___//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -80,12 +80,12 @@ VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=vpc-arandu" --que
 
 if [ "$VPC_ID" = "None" ] || [ -z "$VPC_ID" ]; then # Verifica se a variável VPC_ID é igual a "None" ou está vazia atráves do -z, o que significa que o VPC não existe, e se for o caso, ele cria o VPC
     
-cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                             
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
  _      ______  ______
 | |    / / __ \/ ____/
 | |   / / /_/ / /     
 | |  / / ____/ /___   
-|___/_/    \____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+|___/_/    \____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -100,12 +100,12 @@ echo "==========================================================================
     # Espera o VPC ficar disponível, para garantir que ele esteja pronto para ser usado antes de criar as subredes e os outros recursos que dependem do VPC
     aws ec2 wait vpc-available --vpc-ids $VPC_ID
 
-cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
    _____ __  ______  ____  __________  ___________
   / ___// / / / __ )/ __ \/ ____/ __ \/ ____/ ___/
   \__ \/ / / / __  / /_/ / __/ / / / / __/  \__ \ 
  ___/ / /_/ / /_/ / _, _/ /___/ /_/ / /___ ___/ / 
-/____/\____/_____/_/ |_/_____/_____/_____//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+/____/\____/_____/_/ |_/_____/_____/_____//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -123,12 +123,12 @@ echo "==========================================================================
 
     # Ambas subredes estão com bloco CIDR /24, com 256 endereços IP disponíveis
 
-cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
-    _____   __________________  _   ______________   _________  _____________       _______  _______
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+    _____   __________________  _  ______________   _________  _____________       _______  _______
    /  _/ | / /_  __/ ____/ __ \/ | / / ____/_  __/  / ____/   |/_  __/ ____/ |     / /   \ \/ / ___/
-   / //  |/ / / / / __/ / /_/ /  |/ / __/    / /    / / __/ /| | / / / __/  | |   /| / / /| |\  /\__ \ 
- _/ // /|  / / / / /___/ _, _/ /|  / /___   / /    / /_/ / ___ |/ / / /___  | |  / |/ / ___ |/ /___/ / 
-/___/_/ |_/ /_/ /_____/_/ |_/_/ |_/_____/  /_/     \____/_/   |_/_/ /_____/  |__/|__/_/   |_/_//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+   / //  |/ / / / / __/ / /_/ /  |/ / __/    / /   / / __/ /| | / / / __/  | |   /| / / /| |\  /\__ \ 
+ _/ // /|  / / / / /___/ _, _/ /|  / /___   / /   / /_/ / ___ |/ / / /___  | |  / |/ / ___ |/ /___/ / 
+/___/_/ |_/ /_/ /_____/_/ |_/_/ |_/_____/  /_/    \____/_/  |_/_/ /_____/  |__/|__/_/  |_/_//____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -140,12 +140,12 @@ echo "==========================================================================
     echo -e "\e[32m(!) - Associando Internet Gateway ao VPC...\e[0m\n"
     aws ec2 attach-internet-gateway --internet-gateway-id $INTERNET_GATEWAY_ID --vpc-id $VPC_ID
 
-cat <<'ARTE_ASCII'                                                                                                                                         
+cat <<'ARTE_ASCII'                                                                                                                                                                                                        
     ____  ____  __  ______________   _________    ____  __    ______   ____    __  ____  __    _____________ 
    / __ \/ __ \/ / / /_  __/ ____/  /_  __/   |  / __ )/ /   / ____/  / __ \__/_/_/ __ )/ /   /  _/ ____/   |
   / /_/ / / / / / / / / / / __/      / / / /| | / __  / /   / __/    / /_/ / / / / __  / /    / // /   / /| |
  / _, _/ /_/ / /_/ / / / / /___     / / / ___ |/ /_/ / /___/ /___   / ____/ /_/ / /_/ / /____/ // /___/ ___ |
-/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/    \____/_____/_____/___/\____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/    \____/_____/_____/___/\____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                        
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -161,12 +161,12 @@ echo "==========================================================================
     echo -e "\e[32m(!) - Associando tabela de rotas à subrede pública...\e[0m\n"
     aws ec2 associate-route-table --route-table-id $ROTA_PUBLICA_ID --subnet-id $SUBNET_PUBLICA
 
-cat <<'ARTE_ASCII'                                                                                                                                                                 
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                      
     _   _____  ______
    / | / /   |/_  __/
   /  |/ / /| | / /   
  / /|  / ___ |/ /    
-/_/ |_/_/   |_/_/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+/_/ |_/_/   |_/_/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -185,12 +185,12 @@ NAT_ID=$(aws ec2 create-nat-gateway \
     echo -e "\e[32m(!) - Esperando NAT Gateway ficar disponível...\e[0m\n"
     aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT_ID
 
-cat <<'ARTE_ASCII'                                                                                                                                                                                             
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                  
     ____  ____  __  ______________   _________    ____  __    ______   ____  ____  _____    _____    ____  ___ 
    / __ \/ __ \/ / / /_  __/ ____/  /_  __/   |  / __ )/ /   / ____/  / __ \/ __ \/  _/ |  / /   |  / __ \/   |
   / /_/ / / / / / / / / / / __/      / / / /| | / __  / /   / __/    / /_/ / /_/ // / | | / / /| | / / / / /| |
  / _, _/ /_/ / /_/ / / / / /___     / / / ___ |/ /_/ / /___/ /___   / ____/ _, _// /  | |/ / ___ |/ /_/ / ___ |
-/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/   /_/ |_/___/  |___/_/  |_/_____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+/_/ |_|\____/\____/ /_/ /_____/    /_/ /_/  |_/_____/_____/_____/  /_/   /_/ |_/___/  |___/_/  |_/_____/_/  |_|                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -207,13 +207,45 @@ echo "==========================================================================
     aws ec2 associate-route-table --route-table-id $ROTA_PRIVADA_ID --subnet-id $SUBNET_PRIVADA
     aws ec2 associate-route-table --subnet-id $SUBNET_DB --route-table-id $ROTA_PRIVADA_ID
 
+cat <<'ARTE_ASCII'
+    _   __  ___  ________
+   / | / / /   |/ ____/ /
+  /  |/ / / /| / /   / / 
+ / /|  / / ___ / /___/ /___
+/_/ |_/ /_/  |_\____/_____/
+ARTE_ASCII
+echo "========================================================================================================================================"
 
-cat <<'ARTE_ASCII'                                                                                                                                                                     
+    echo -e "\e[32m(!) - Criando Network Access Control List (NACL)...\e[0m\n"
+    # Criando a NACL
+    NACL_ID=$(aws ec2 create-network-acl --vpc-id $VPC_ID --tag-specifications 'ResourceType=network-acl,Tags=[{Key=Name,Value=nacl-publica-arandu}]' --query 'NetworkAcl.NetworkAclId' --output text)
+
+    # Como a NACL é "stateless" precisa criar as regras de segurança
+
+    echo -e "\e[32m(!) - Configurando regras de Inbound (Entrada) da NACL...\e[0m\n"
+    # Regra 100: Permite tráfego HTTP (porta 80) de qualquer lugar
+    aws ec2 create-network-acl-entry --network-acl-id $NACL_ID --ingress --rule-number 100 --protocol tcp --port-range From=80,To=80 --cidr-block 0.0.0.0/0 --rule-action allow
+    # Regra 110: Permite tráfego SSH (porta 22) de qualquer lugar
+    aws ec2 create-network-acl-entry --network-acl-id $NACL_ID --ingress --rule-number 110 --protocol tcp --port-range From=22,To=22 --cidr-block 0.0.0.0/0 --rule-action allow
+    # Regra 120: Permite portas temporárias (1024-65535)
+    aws ec2 create-network-acl-entry --network-acl-id $NACL_ID --ingress --rule-number 120 --protocol tcp --port-range From=1024,To=65535 --cidr-block 0.0.0.0/0 --rule-action allow
+
+    echo -e "\e[32m(!) - Configurando regras de Outbound (Saída) da NACL...\e[0m\n"
+    # Regra 100 de saída: Permite que todo tráfego saia da subrede
+    aws ec2 create-network-acl-entry --network-acl-id $NACL_ID --egress --rule-number 100 --protocol -1 --port-range From=-1,To=-1 --cidr-block 0.0.0.0/0 --rule-action allow
+
+    # Para atrelar a nova NACL a subrede pública, tem pegar o ID da associação padrão dela e substituir
+    echo -e "\e[32m(!) - Associando NACL customizada à subrede pública...\e[0m\n"
+    ASSOC_ID_PUBLICA=$(aws ec2 describe-network-acls --filters "Name=association.subnet-id,Values=$SUBNET_PUBLICA" --query "NetworkAcls[].Associations[?SubnetId=='$SUBNET_PUBLICA'].NetworkAclAssociationId" --output text)
+    
+    aws ec2 replace-network-acl-association --association-id $ASSOC_ID_PUBLICA --network-acl-id $NACL_ID
+
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                             
     _____ ______________  ______  ____________  __   ___________  ____  __  ______  _____
    / ___/ ____/ ____/ / / / __ \/  _/_  __/\ \/ /  / ____/ __ \/ __ \/ / / / __ \/ ___/
    \__ \/ __/ / /    / / / / /_/ // /   / /    \  /  / / __/ /_/ / / / / / / / /_/ /\__ \ 
   ___/ / /___/ /___/ /_/ / _, _// /   / /      / /  / /_/ / _, _/ /_/ / /_/ / ____/___/ / 
-/____/_____/\____/\____/_/ |_/___/  /_/      /_/   \____/_/ |_|\____/\____/_/    /____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+/____/_____/\____/\____/_/ |_/___/  /_/      /_/   \____/_/ |_|\____/\____/_/    /____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -243,7 +275,7 @@ cat <<'ARTE_ASCII'
     /  _/ | / / ___/_  __/|/|| / | / / ____/  _/   | / ___/
     / //  |/ /\__ \ / / / _ | /  |/ / /    / // /| | \__ \ 
   _/ // /|  /___/ // / / __ |/ /|  / /____/ // ___ |___/ / 
-/___/_/ |_//____//_/ /_/ |_/_/ |_/\____/___/_/  |_/____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+/___/_/ |_//____//_/ /_/ |_/_/ |_/\____/___/_/  |_/____/                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 ARTE_ASCII
 echo "========================================================================================================================================"
 
@@ -391,6 +423,14 @@ else
 
         for s in $SUBNETS; do
             aws ec2 delete-subnet --subnet-id $s
+        done
+
+        echo -e "\e[32m(!) - Removendo NACLs customizadas...\e[0m\n"
+
+        NACLS=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkAcls[?IsDefault==\`false\`].NetworkAclId" --output text)
+
+        for nacl in $NACLS; do
+            aws ec2 delete-network-acl --network-acl-id $nacl 2>/dev/null || true
         done
 
 
