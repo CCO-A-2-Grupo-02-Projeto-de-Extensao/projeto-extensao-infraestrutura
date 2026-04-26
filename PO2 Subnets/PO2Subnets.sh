@@ -4,6 +4,9 @@
 export AWS_PAGER=""
 set -e # Faz com que o script pare a execução caso ocorra algum erro em algum comando evitando criar uma infraestrutura incompleta ou com erros
 
+REGIAO="us-east-1"
+BUCKET_S3="s3-arandu-bucket"
+
 clear # Limpa o terminal
 
 
@@ -66,7 +69,7 @@ if [[ "$resposta" != "s" && "$resposta" != "S" ]]; then
     # Configura o Session Token na AWS
     aws configure set aws_session_token "$sessionToken"
     # Deixa a região padrão como us-east-1
-    aws configure set default.region "us-east-1"
+    aws configure set default.region "$REGIAO"
 
     echo -e "\e[32mCredenciais cadastradas com sucesso! Execute o programa novamente e responda com a letra 's'.\e[0m"
     exit 
@@ -101,6 +104,24 @@ echo "==========================================================================
     aws ec2 wait vpc-available --vpc-ids $VPC_ID
 
 cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+    ____  __  __________ __ ____________
+   / __ )/ / / / ____/ //_// ____/_  __/
+  / __  / / / / /   / ,<  / __/   / /   
+ / /_/ / /_/ / /___/ /| |/ /___  / /    
+/_____/\____/\____/_/ |_/_____/ /_/     
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+ARTE_ASCII
+echo "========================================================================================================================================"
+
+    echo -e "\e[32m(!) - Verificando/Criando bucket S3 $BUCKET_S3...\e[0m\n"
+    if aws s3api head-bucket --bucket "$BUCKET_S3" 2>/dev/null; then
+        echo -e "\e[33m(!) - Bucket S3 já existe ou já está acessível: $BUCKET_S3\e[0m\n"
+    else
+        aws s3api create-bucket --bucket "$BUCKET_S3" --region "$REGIAO"
+        echo -e "\e[32m(!) - Bucket S3 criado com sucesso: $BUCKET_S3\e[0m\n"
+    fi
+
+cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
    _____ __  ______  ____  __________  ___________
   / ___// / / / __ )/ __ \/ ____/ __ \/ ____/ ___/
   \__ \/ / / / __  / /_/ / __/ / / / / __/  \__ \ 
@@ -113,6 +134,10 @@ echo "==========================================================================
     # Cria subred do frontend dentro do VPC criado
     SUBNET_PUBLICA=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/24 --availability-zone us-east-1a --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-frontend-publica-arandu}]' --query 'Subnet.SubnetId' --output text)
     aws ec2 modify-subnet-attribute --subnet-id $SUBNET_PUBLICA --map-public-ip-on-launch
+
+    echo -e "\e[32m(!) - Criando segunda subrede publica Frontend em outra zona...\e[0m\n"
+    SUBNET_PUBLICA_2=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.4.0/24 --availability-zone us-east-1b --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=subnet-frontend-publica-arandu-2}]' --query 'Subnet.SubnetId' --output text)
+    aws ec2 modify-subnet-attribute --subnet-id $SUBNET_PUBLICA_2 --map-public-ip-on-launch
 
     echo -e "\e[32m(!) - Criando subrede privada Backend...\e[0m\n"
     # Cria subred do backend dentro do VPC criado
@@ -160,6 +185,7 @@ echo "==========================================================================
     # Associando a tabela de rotas criada à subrede pública, para que as instâncias na subrede pública possam acessar a internet através do Internet Gateway criado
     echo -e "\e[32m(!) - Associando tabela de rotas à subrede pública...\e[0m\n"
     aws ec2 associate-route-table --route-table-id $ROTA_PUBLICA_ID --subnet-id $SUBNET_PUBLICA
+    aws ec2 associate-route-table --route-table-id $ROTA_PUBLICA_ID --subnet-id $SUBNET_PUBLICA_2
 
 cat <<'ARTE_ASCII'                                                                                                                                                                                                                                      
     _   _____  ______
@@ -240,6 +266,9 @@ echo "==========================================================================
     
     aws ec2 replace-network-acl-association --association-id $ASSOC_ID_PUBLICA --network-acl-id $NACL_ID
 
+    ASSOC_ID_PUBLICA_2=$(aws ec2 describe-network-acls --filters "Name=association.subnet-id,Values=$SUBNET_PUBLICA_2" --query "NetworkAcls[].Associations[?SubnetId=='$SUBNET_PUBLICA_2'].NetworkAclAssociationId" --output text)
+    aws ec2 replace-network-acl-association --association-id $ASSOC_ID_PUBLICA_2 --network-acl-id $NACL_ID
+
 cat <<'ARTE_ASCII'                                                                                                                                                                                                                                                             
     _____ ______________  ______  ____________  __   ___________  ____  __  ______  _____
    / ___/ ____/ ____/ / / / __ \/  _/_  __/\ \/ /  / ____/ __ \/ __ \/ / / / __ \/ ___/
@@ -255,6 +284,12 @@ aws ec2 authorize-security-group-ingress --group-id $SG_FRONTEND --protocol tcp 
 aws ec2 authorize-security-group-ingress --group-id $SG_FRONTEND --protocol tcp --port 80 --cidr 0.0.0.0/0
 
 aws ec2 create-tags --resources $SG_FRONTEND --tags Key=Name,Value=arandu-sg-frontend
+
+echo -e "\e[32m(!) - Criando security group do Load Balancer...\e[0m\n"
+SG_ALB=$(aws ec2 create-security-group --group-name arandu-sg-alb --description "SG Load Balancer Arandu" --vpc-id $VPC_ID --query 'GroupId' --output text)
+aws ec2 create-tags --resources $SG_ALB --tags Key=Name,Value=arandu-sg-alb
+aws ec2 authorize-security-group-ingress --group-id $SG_ALB --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $SG_FRONTEND --protocol tcp --port 80 --source-group $SG_ALB
 
 echo -e "\e[32m(!) - Criando security group do backend...\e[0m\n"
 
@@ -309,8 +344,8 @@ systemctl enable nginx
 EOF
 
 # Criando uma instância EC2 na subrede pública do VPC criado e instalando o Nginx via user-data
-echo -e "\e[32m(!) - Criando instância EC2 pública do frontend com Nginx...\e[0m\n"
-aws ec2 run-instances \
+echo -e "\e[32m(!) - Criando primeira instância EC2 pública do frontend com Nginx...\e[0m\n"
+FRONTEND_1_ID=$(aws ec2 run-instances \
 --image-id $IMAGEM_ID \
 --instance-type t2.micro \
 --key-name arandu-key \
@@ -319,8 +354,62 @@ aws ec2 run-instances \
 --security-group-ids $SG_FRONTEND \
 --associate-public-ip-address \
 --user-data file://user_data_nginx.sh \
---tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-frontend},{Key=Role,Value=frontend}]'
+--tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-frontend-1},{Key=Role,Value=frontend}]' \
+--query 'Instances[0].InstanceId' \
+--output text)
+
+echo -e "\e[32m(!) - Criando segunda instância EC2 pública do frontend com Nginx em outra zona...\e[0m\n"
+FRONTEND_2_ID=$(aws ec2 run-instances \
+--image-id $IMAGEM_ID \
+--instance-type t2.micro \
+--key-name arandu-key \
+--subnet-id $SUBNET_PUBLICA_2 \
+--private-ip-address 10.0.4.10 \
+--security-group-ids $SG_FRONTEND \
+--associate-public-ip-address \
+--user-data file://user_data_nginx.sh \
+--tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=ec2-arandu-frontend-2},{Key=Role,Value=frontend}]' \
+--query 'Instances[0].InstanceId' \
+--output text)
+
+aws ec2 wait instance-running --instance-ids $FRONTEND_1_ID $FRONTEND_2_ID
 # --user-data indica o script que será executado no boot para instalar o nginx
+
+echo -e "\e[32m(!) - Criando Application Load Balancer para os frontends...\e[0m\n"
+ALB_ARN=$(aws elbv2 create-load-balancer \
+--name alb-arandu-frontend \
+--subnets $SUBNET_PUBLICA $SUBNET_PUBLICA_2 \
+--security-groups $SG_ALB \
+--scheme internet-facing \
+--type application \
+--ip-address-type ipv4 \
+--tags Key=Name,Value=alb-arandu-frontend \
+--query 'LoadBalancers[0].LoadBalancerArn' \
+--output text)
+
+TARGET_GROUP_ARN=$(aws elbv2 create-target-group \
+--name tg-arandu-frontend \
+--protocol HTTP \
+--port 80 \
+--vpc-id $VPC_ID \
+--target-type instance \
+--health-check-protocol HTTP \
+--health-check-path / \
+--query 'TargetGroups[0].TargetGroupArn' \
+--output text)
+
+aws elbv2 register-targets \
+--target-group-arn $TARGET_GROUP_ARN \
+--targets Id=$FRONTEND_1_ID,Port=80 Id=$FRONTEND_2_ID,Port=80
+
+aws elbv2 create-listener \
+--load-balancer-arn $ALB_ARN \
+--protocol HTTP \
+--port 80 \
+--default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
+
+ALB_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $ALB_ARN --query 'LoadBalancers[0].DNSName' --output text)
+echo -e "\e[32m(!) - Load Balancer criado. DNS: http://$ALB_DNS\e[0m\n"
 
 # Criando a instância na subrede privada, sem associar um IP público, o que significa que ela só poderá ser acessada através da instância pública, utilizando o SSH com a chave privada criada anteriormente
 echo -e "\e[32m(!) - Criando instância EC2 privada do backend...\e[0m\n"
@@ -366,6 +455,25 @@ else
             aws ec2 wait instance-terminated --instance-ids $INSTANCIAS
         fi
 
+
+        echo -e "\e[32m(!) - Removendo Load Balancers e Target Groups...\e[0m\n"
+
+        ALB_ARNS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" --output text 2>/dev/null || true)
+        for alb in $ALB_ARNS; do
+            aws elbv2 delete-load-balancer --load-balancer-arn $alb 2>/dev/null || true
+        done
+        sleep 30
+
+        TG_ARNS=$(aws elbv2 describe-target-groups --query "TargetGroups[?VpcId=='$VPC_ID'].TargetGroupArn" --output text 2>/dev/null || true)
+        for tg in $TG_ARNS; do
+            aws elbv2 delete-target-group --target-group-arn $tg 2>/dev/null || true
+        done
+
+        echo -e "\e[32m(!) - Removendo bucket S3 $BUCKET_S3...\e[0m\n"
+        if aws s3api head-bucket --bucket "$BUCKET_S3" 2>/dev/null; then
+            aws s3 rm "s3://$BUCKET_S3" --recursive 2>/dev/null || true
+            aws s3api delete-bucket --bucket "$BUCKET_S3" --region "$REGIAO" 2>/dev/null || true
+        fi
 
         echo -e "\e[32m(!) - Removendo NAT Gateway...\e[0m\n"
 
