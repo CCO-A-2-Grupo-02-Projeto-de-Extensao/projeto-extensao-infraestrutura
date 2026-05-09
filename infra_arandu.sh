@@ -227,7 +227,7 @@ associar_nacl() {
 criar_efs() {
     local sg_efs=$1
 
-    log "Criando EFS..."
+    log "Criando EFS..." >&2
     local efs_id
     efs_id=$(aws efs create-file-system \
         --performance-mode generalPurpose \
@@ -242,7 +242,7 @@ criar_efs() {
             --query "FileSystems[?LifeCycleState!='available'].FileSystemId" \
             --output text
 
-    log "Criando mount targets do EFS nas subnets públicas..."
+    log "Criando mount targets do EFS nas subnets públicas..." >&2
     for subnet in "$SUBNET_PUBLICA" "$SUBNET_PUBLICA_2"; do
         aws efs create-mount-target \
             --file-system-id "$efs_id" \
@@ -254,53 +254,38 @@ criar_efs() {
 }
 
 # -----------------------------------------------------------------------------
-# User data — Nginx + montagem do EFS
+# User data — Docker + React frontend + montagem do EFS
 # -----------------------------------------------------------------------------
+DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
+
 gerar_user_data() {
     local efs_id=$1
     cat <<EOF
 #!/bin/bash
 apt-get update -y
-apt-get install -y nginx nfs-common
+apt-get install -y docker.io nfs-common
 
+# Monta o EFS
 EFS_DNS="${efs_id}.efs.${REGIAO}.amazonaws.com"
 mkdir -p /mnt/efs
 mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 \
     "\$EFS_DNS":/ /mnt/efs
 echo "\$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev 0 0" >> /etc/fstab
 
-HOSTNAME_ATUAL=\$(hostname)
+# Busca o IP privado da instância via metadata da AWS
+INSTANCE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
-cat <<HTML > /var/www/html/index.html
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <title>Arandu Frontend</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f7fb; color: #1f2937;
-               display: flex; justify-content: center; align-items: center;
-               height: 100vh; margin: 0; }
-        .card { background: white; padding: 32px; border-radius: 12px;
-                box-shadow: 0 8px 24px rgba(0,0,0,0.12); text-align: center; }
-        h1 { margin-bottom: 8px; color: #2563eb; }
-        p  { margin: 6px 0; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1>Frontend Arandu</h1>
-        <p>Instância EC2 com Nginx funcionando.</p>
-        <p>Balanceamento de carga ativo.</p>
-        <p>EFS montado em <strong>/mnt/efs</strong></p>
-        <p><strong>Servidor:</strong> \$HOSTNAME_ATUAL</p>
-    </div>
-</body>
-</html>
-HTML
-
-systemctl start nginx
-systemctl enable nginx
+# Inicia o Docker e sobe o container do frontend
+systemctl start docker
+systemctl enable docker
+docker pull ${DOCKER_IMAGE}
+docker run -d \
+    --name frontend \
+    --restart unless-stopped \
+    -p 80:80 \
+    -e INSTANCE_IP="\$INSTANCE_IP" \
+    -v /mnt/efs:/mnt/efs \
+    ${DOCKER_IMAGE}
 EOF
 }
 
@@ -332,7 +317,7 @@ criar_instancia() {
 criar_alb() {
     local sg_alb=$1 inst1=$2 inst2=$3
 
-    log "Removendo ALB/TG antigos com o mesmo nome, se existirem..."
+    log "Removendo ALB/TG antigos com o mesmo nome, se existirem..." >&2
     local old_alb
     old_alb=$(get_alb_arn "$ALB_NAME")
     if [[ -n "$old_alb" ]]; then
@@ -346,7 +331,7 @@ criar_alb() {
         safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg"
     fi
 
-    log "Criando Load Balancer..."
+    log "Criando Load Balancer..." >&2
     local alb_arn
     alb_arn=$(aws elbv2 create-load-balancer \
         --name "$ALB_NAME" \
@@ -411,15 +396,12 @@ echo
 
 for i in \$(seq 1 \$TOTAL_TESTES); do
     echo "Teste \$i..."
-    RESPOSTA=\$(curl -s --max-time 10 "\$URL")
+    SERVIDOR=\$(curl -s --max-time 10 "\$URL/hostname")
 
-    if [ -z "\$RESPOSTA" ]; then
+    if [ -z "\$SERVIDOR" ]; then
         echo "Sem resposta do Load Balancer"
     else
-        SERVIDOR=\$(echo "\$RESPOSTA" | sed -n 's/.*<strong>Servidor:<\/strong> \([^<]*\)<\/p>.*/\1/p')
-        [ -n "\$SERVIDOR" ] \
-            && echo "Caiu na instância: \$SERVIDOR" \
-            || echo "Resposta recebida, mas não foi possível identificar a instância"
+        echo "Caiu na instância: \$SERVIDOR"
     fi
 
     echo "----------------------------------------"
