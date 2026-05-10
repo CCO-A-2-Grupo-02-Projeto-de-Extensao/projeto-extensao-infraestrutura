@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Auto-converte CRLF para LF ao rodar no Linux (mantém compatibilidade Windows/Linux)
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    sed -i 's/\r//' "$0" 2>/dev/null || true
+fi
+
 # =============================================================================
 # Arandu — Infraestrutura AWS
 # Projeto acadêmico | us-east-1
@@ -20,6 +25,14 @@ KEY_NAME="arandu-key"
 ALB_NAME="alb-arandu-frontend"
 TG_NAME="tg-arandu-frontend"
 EFS_NAME="efs-arandu"
+RDS_INSTANCE_ID="rds-arandu-db"
+RDS_DB_NAME="bdClubeDesbravadores"
+RDS_USERNAME="admin"
+RDS_PASSWORD="arandu2026"
+RDS_CLASS="db.t3.micro"
+RDS_ENGINE="mysql"
+RDS_ENGINE_VERSION="8.0"
+SQL_URL="https://raw.githubusercontent.com/CCO-A-2-Grupo-02-Projeto-de-Extensao/projeto-extensao-backend/main/bdClubeDesbravadores.sql"
 TESTE_LB_SCRIPT="testar_loadbalancer.sh"
 AMI_OWNER="099720109477"
 AMI_FILTER="ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
@@ -30,6 +43,7 @@ declare -A SUBNETS=(
     [frontend-2]="subnet-frontend-publica-arandu-2|10.0.4.0/24|us-east-1b|true"
     [backend]="subnet-backend-privada-arandu|10.0.2.0/24|us-east-1a|false"
     [db]="subnet-privada-db-arandu|10.0.3.0/24|us-east-1a|false"
+    [db-2]="subnet-privada-db-arandu-2|10.0.5.0/24|us-east-1b|false"
 )
 
 # -----------------------------------------------------------------------------
@@ -200,6 +214,7 @@ criar_nacl_publica() {
 
     nacl_entry --ingress 100 tcp  80    80    allow
     nacl_entry --ingress 110 tcp  22    22    allow
+    nacl_entry --ingress 115 tcp  443   443   allow  # HTTPS retorno NAT
     nacl_entry --ingress 120 tcp  2049  2049  allow  # NFS para EFS
     nacl_entry --ingress 130 tcp  1024  65535 allow
     nacl_entry --egress  100 -1   0     0     allow
@@ -274,6 +289,14 @@ echo "\$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,tim
 
 # Busca o IP privado da instância via metadata da AWS
 INSTANCE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+
+# Copia a chave SSH para o ubuntu poder saltar para instâncias privadas
+mkdir -p /home/ubuntu/.ssh
+cat << SSHKEY > /home/ubuntu/.ssh/arandu-key.pem
+${KEY_CONTENT}
+SSHKEY
+chmod 400 /home/ubuntu/.ssh/arandu-key.pem
+chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 
 # Inicia o Docker e sobe o container do frontend
 systemctl start docker
@@ -704,6 +727,84 @@ deletar_vpc() {
 }
 
 # -----------------------------------------------------------------------------
+# RDS
+# -----------------------------------------------------------------------------
+criar_rds() {
+    local sg_db=$1 subnet_db=$2 subnet_db_2=$3
+
+    log "Criando Subnet Group do RDS..." >&2
+    aws rds create-db-subnet-group \
+        --db-subnet-group-name "rds-subnet-group-arandu" \
+        --db-subnet-group-description "Subnet group do RDS Arandu" \
+        --subnet-ids "$subnet_db" "$subnet_db_2" > /dev/null
+
+    log "Criando instância RDS MySQL..." >&2
+    aws rds create-db-instance \
+        --db-instance-identifier "$RDS_INSTANCE_ID" \
+        --db-instance-class "$RDS_CLASS" \
+        --engine "$RDS_ENGINE" \
+        --engine-version "$RDS_ENGINE_VERSION" \
+        --master-username "$RDS_USERNAME" \
+        --master-user-password "$RDS_PASSWORD" \
+        --db-name "$RDS_DB_NAME" \
+        --vpc-security-group-ids "$sg_db" \
+        --db-subnet-group-name "rds-subnet-group-arandu" \
+        --no-publicly-accessible \
+        --allocated-storage 20 \
+        --storage-type gp2 \
+        --backup-retention-period 0 \
+        --no-multi-az \
+        --no-deletion-protection > /dev/null
+
+    log "Aguardando RDS ficar disponível (pode levar ~5 min)..." >&2
+    aws rds wait db-instance-available --db-instance-identifier "$RDS_INSTANCE_ID"
+
+    # Retorna o endpoint do RDS
+    aws rds describe-db-instances \
+        --db-instance-identifier "$RDS_INSTANCE_ID" \
+        --query "DBInstances[0].Endpoint.Address" \
+        --output text
+}
+
+gerar_user_data_backend() {
+    local rds_endpoint=$1
+    cat <<EOF
+#!/bin/bash
+
+# Aguarda o NAT Gateway estar disponível antes de qualquer coisa
+until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do
+    sleep 10
+done
+
+apt-get update -y
+apt-get install -y mysql-client curl
+
+# Aguarda o RDS aceitar conexões
+until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do
+    sleep 15
+done
+
+# Baixa e executa o script SQL no RDS
+curl -4 -s "${SQL_URL}" -o /tmp/bdClubeDesbravadores.sql
+mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" "${RDS_DB_NAME}" < /tmp/bdClubeDesbravadores.sql
+rm -f /tmp/bdClubeDesbravadores.sql
+EOF
+}
+
+deletar_rds() {
+    log "Removendo instância RDS..."
+    safe_delete aws rds delete-db-instance \
+        --db-instance-identifier "$RDS_INSTANCE_ID" \
+        --skip-final-snapshot
+    safe_delete aws rds wait db-instance-deleted \
+        --db-instance-identifier "$RDS_INSTANCE_ID"
+
+    log "Removendo Subnet Group do RDS..."
+    safe_delete aws rds delete-db-subnet-group \
+        --db-subnet-group-name "rds-subnet-group-arandu"
+}
+
+# -----------------------------------------------------------------------------
 # Fluxo principal — Criação
 # -----------------------------------------------------------------------------
 criar_infraestrutura() {
@@ -720,6 +821,7 @@ criar_infraestrutura() {
     SUBNET_PUBLICA_2=$(criar_subnet frontend-2)
     SUBNET_PRIVADA=$(criar_subnet backend)
     SUBNET_DB=$(criar_subnet db)
+    SUBNET_DB_2=$(criar_subnet db-2)
 
     log "Criando Internet Gateway..."
     IGW_ID=$(aws ec2 create-internet-gateway \
@@ -743,7 +845,7 @@ criar_infraestrutura() {
     aws ec2 wait nat-gateway-available --nat-gateway-ids "$NAT_ID"
 
     RT_PRIVADA=$(criar_route_table "rota-privada-arandu" --nat-gateway-id "$NAT_ID")
-    associar_subnet_rt "$RT_PRIVADA" "$SUBNET_PRIVADA" "$SUBNET_DB"
+    associar_subnet_rt "$RT_PRIVADA" "$SUBNET_PRIVADA" "$SUBNET_DB" "$SUBNET_DB_2"
 
     log "Criando NACL pública..."
     NACL_ID=$(criar_nacl_publica)
@@ -789,7 +891,7 @@ criar_infraestrutura() {
     EFS_ID=$(criar_efs "$SG_EFS")
 
     log "Gerando user data do Nginx + EFS..."
-    gerar_user_data "$EFS_ID" > user_data_nginx.sh
+    KEY_CONTENT=$(cat arandu-key.pem) gerar_user_data "$EFS_ID" > user_data_nginx.sh
 
     log "Criando instâncias frontend..."
     FRONTEND_1_ID=$(criar_instancia ec2-arandu-frontend-1 frontend "$SUBNET_PUBLICA"   10.0.1.10 "$SG_FRONTEND" user_data_nginx.sh)
@@ -799,18 +901,26 @@ criar_infraestrutura() {
     APP_DNS=$(criar_alb "$SG_ALB" "$FRONTEND_1_ID" "$FRONTEND_2_ID")
     APP_URL="http://$APP_DNS"
 
-    log "Criando instâncias backend e banco..."
-    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND")
-    DB_ID=$(criar_instancia       ec2-arandu-db      db      "$SUBNET_DB"     10.0.3.10 "$SG_DB")
-    aws ec2 wait instance-running --instance-ids "$BACKEND_ID" "$DB_ID"
+    log "Criando RDS MySQL..."
+    RDS_ENDPOINT=$(criar_rds "$SG_DB" "$SUBNET_DB" "$SUBNET_DB_2")
+
+    log "Gerando user data do backend..."
+    gerar_user_data_backend "$RDS_ENDPOINT" > user_data_backend.sh
+
+    log "Criando instância backend..."
+    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND" user_data_backend.sh)
+    aws ec2 wait instance-running --instance-ids "$BACKEND_ID"
 
     gerar_script_teste "$APP_URL"
-    rm -f user_data_nginx.sh
+    rm -f user_data_nginx.sh user_data_backend.sh
 
     echo ""
     log "Infraestrutura criada com sucesso!"
-    log "EFS ID:           $EFS_ID"
-    log "URL da aplicação: $APP_URL"
+    log "EFS ID:             $EFS_ID"
+    log "RDS Endpoint:       $RDS_ENDPOINT"
+    log "RDS Database:       $RDS_DB_NAME"
+    log "RDS User:           $RDS_USERNAME"
+    log "URL da aplicação:   $APP_URL"
     log "Teste do balanceador: ./$TESTE_LB_SCRIPT"
     warn "Se abrir antes dos targets ficarem saudáveis, aguarde alguns instantes e atualize a página."
 }
@@ -820,7 +930,8 @@ criar_infraestrutura() {
 # -----------------------------------------------------------------------------
 deletar_infraestrutura() {
     deletar_instancias
-    deletar_albs      # já aguarda as ENIs do ALB sumirem internamente
+    deletar_rds
+    deletar_albs      
     deletar_efs
     deletar_nat
     deletar_route_tables
