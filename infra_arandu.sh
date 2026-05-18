@@ -1,9 +1,7 @@
 #!/bin/bash
 
 # Auto-converte CRLF para LF ao rodar no Linux (mantém compatibilidade Windows/Linux)
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    sed -i 's/\r//' "$0" 2>/dev/null || true
-fi
+sed -i 's/\r//' "$0" 2>/dev/null || true
 
 # =============================================================================
 # Arandu — Infraestrutura AWS
@@ -36,6 +34,10 @@ SQL_URL="https://raw.githubusercontent.com/CCO-A-2-Grupo-02-Projeto-de-Extensao/
 TESTE_LB_SCRIPT="testar_loadbalancer.sh"
 AMI_OWNER="099720109477"
 AMI_FILTER="ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+BACKEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:backend"
+TG_BACKEND_NAME="tg-arandu-backend"
+IAM_ROLE_NAME="arandu-backend-role"
+IAM_PROFILE_NAME="arandu-backend-profile"
 
 # Subnets: name | cidr | az | public
 declare -A SUBNETS=(
@@ -237,6 +239,118 @@ associar_nacl() {
 }
 
 # -----------------------------------------------------------------------------
+# S3
+# -----------------------------------------------------------------------------
+criar_s3() {
+    local account_id
+    account_id=$(aws sts get-caller-identity --query Account --output text)
+    local bucket="arandu-documentos-${account_id}"
+
+    if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+        log "Bucket S3 já existe: $bucket" >&2
+    else
+        log "Criando bucket S3: $bucket" >&2
+        # us-east-1 não aceita LocationConstraint — as demais regiões precisariam de --create-bucket-configuration
+        aws s3api create-bucket --bucket "$bucket" --region "$REGIAO" > /dev/null
+        aws s3api put-public-access-block \
+            --bucket "$bucket" \
+            --public-access-block-configuration \
+                "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" > /dev/null
+        log "Bucket criado e bloqueio público aplicado." >&2
+    fi
+
+    echo "$bucket"
+}
+
+deletar_s3() {
+    log "Esvaziando e removendo bucket S3..."
+    local account_id
+    account_id=$(aws sts get-caller-identity --query Account --output text)
+    local bucket="arandu-documentos-${account_id}"
+
+    if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+        safe_delete aws s3 rm "s3://$bucket" --recursive
+        safe_delete aws s3api delete-bucket --bucket "$bucket"
+        log "Bucket $bucket removido."
+    else
+        warn "Bucket S3 não encontrado: $bucket"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# IAM — Instance Profile para o backend acessar o S3
+# -----------------------------------------------------------------------------
+obter_instance_profile() {
+    local s3_bucket=$1
+
+    # AWS Academy disponibiliza LabInstanceProfile com permissões amplas
+    if aws iam get-instance-profile --instance-profile-name "LabInstanceProfile" \
+        --query "InstanceProfile.InstanceProfileName" --output text 2>/dev/null | grep -q "LabInstanceProfile"; then
+        log "LabInstanceProfile detectado (AWS Academy) — reutilizando." >&2
+        echo "LabInstanceProfile"
+        return
+    fi
+
+    # Verifica se o profile customizado já existe (re-execução do script)
+    if aws iam get-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" 2>/dev/null; then
+        log "Instance profile $IAM_PROFILE_NAME já existe, reutilizando." >&2
+        echo "$IAM_PROFILE_NAME"
+        return
+    fi
+
+    log "Criando IAM role e instance profile para o backend..." >&2
+
+    aws iam create-role \
+        --role-name "$IAM_ROLE_NAME" \
+        --assume-role-policy-document \
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+        > /dev/null
+
+    aws iam put-role-policy \
+        --role-name "$IAM_ROLE_NAME" \
+        --policy-name "arandu-s3-policy" \
+        --policy-document "{
+            \"Version\": \"2012-10-17\",
+            \"Statement\": [{
+                \"Effect\": \"Allow\",
+                \"Action\": [\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],
+                \"Resource\": [
+                    \"arn:aws:s3:::${s3_bucket}\",
+                    \"arn:aws:s3:::${s3_bucket}/*\"
+                ]
+            }]
+        }" > /dev/null
+
+    aws iam create-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" > /dev/null
+    aws iam add-role-to-instance-profile \
+        --instance-profile-name "$IAM_PROFILE_NAME" \
+        --role-name "$IAM_ROLE_NAME" > /dev/null
+
+    # IAM é eventualmente consistente; aguarda a propagação antes de usar o profile
+    sleep 15
+
+    echo "$IAM_PROFILE_NAME"
+}
+
+deletar_iam_backend() {
+    log "Removendo IAM role/profile do backend..."
+
+    # Se estiver usando LabInstanceProfile (AWS Academy), não tenta deletar
+    if [[ "$(aws iam get-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" \
+        --query "InstanceProfile.InstanceProfileName" --output text 2>/dev/null)" != "$IAM_PROFILE_NAME" ]]; then
+        warn "Profile $IAM_PROFILE_NAME não encontrado (pode ser LabInstanceProfile), pulando."
+        return
+    fi
+
+    safe_delete aws iam remove-role-from-instance-profile \
+        --instance-profile-name "$IAM_PROFILE_NAME" \
+        --role-name "$IAM_ROLE_NAME"
+    safe_delete aws iam delete-instance-profile --instance-profile-name "$IAM_PROFILE_NAME"
+    safe_delete aws iam delete-role-policy --role-name "$IAM_ROLE_NAME" --policy-name "arandu-s3-policy"
+    safe_delete aws iam delete-role --role-name "$IAM_ROLE_NAME"
+}
+
+# -----------------------------------------------------------------------------
 # EFS
 # -----------------------------------------------------------------------------
 criar_efs() {
@@ -316,10 +430,11 @@ EOF
 # Instâncias EC2
 # -----------------------------------------------------------------------------
 criar_instancia() {
-    local name=$1 role=$2 subnet=$3 ip=$4 sg=$5 user_data_file=${6:-}
+    local name=$1 role=$2 subnet=$3 ip=$4 sg=$5 user_data_file=${6:-} iam_profile=${7:-}
 
     local extra_flags=()
     [[ -n "$user_data_file" ]] && extra_flags+=(--user-data "file://$user_data_file" --associate-public-ip-address)
+    [[ -n "$iam_profile" ]] && extra_flags+=(--iam-instance-profile "Name=$iam_profile")
 
     aws ec2 run-instances \
         --image-id "$IMAGEM_ID" \
@@ -383,11 +498,13 @@ criar_alb() {
         --target-group-arn "$tg_arn" \
         --targets "Id=$inst1,Port=80" "Id=$inst2,Port=80" > /dev/null
 
-    aws elbv2 create-listener \
+    ALB_LISTENER_ARN=$(aws elbv2 create-listener \
         --load-balancer-arn "$alb_arn" \
         --protocol HTTP \
         --port 80 \
-        --default-actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
+        --default-actions "Type=forward,TargetGroupArn=$tg_arn" \
+        --query 'Listeners[0].ListenerArn' \
+        --output text)
 
     local dns
     dns=$(aws elbv2 describe-load-balancers \
@@ -399,7 +516,53 @@ criar_alb() {
         --target-group-arn "$tg_arn" \
         --targets "Id=$inst1,Port=80" "Id=$inst2,Port=80"
 
-    echo "$dns"
+    ALB_DNS="$dns"
+}
+
+# -----------------------------------------------------------------------------
+# Backend — Target Group + regras Swagger no ALB existente
+# -----------------------------------------------------------------------------
+configurar_backend_alb() {
+    local backend_id=$1
+
+    log "Criando Target Group do backend..." >&2
+    local old_tg_backend
+    old_tg_backend=$(get_tg_arn "$TG_BACKEND_NAME")
+    [[ -n "$old_tg_backend" ]] && safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg_backend"
+
+    local tg_arn
+    tg_arn=$(aws elbv2 create-target-group \
+        --name "$TG_BACKEND_NAME" \
+        --protocol HTTP \
+        --port 8080 \
+        --vpc-id "$VPC_ID" \
+        --target-type instance \
+        --health-check-protocol HTTP \
+        --health-check-path "/v3/api-docs" \
+        --health-check-interval-seconds 30 \
+        --healthy-threshold-count 2 \
+        --unhealthy-threshold-count 5 \
+        --query 'TargetGroups[0].TargetGroupArn' \
+        --output text)
+
+    aws elbv2 register-targets \
+        --target-group-arn "$tg_arn" \
+        --targets "Id=$backend_id,Port=8080" > /dev/null
+
+    # Roteamento por path: Swagger UI e API docs → backend (prioridade menor = avaliada primeiro)
+    aws elbv2 create-rule \
+        --listener-arn "$ALB_LISTENER_ARN" \
+        --conditions '[{"Field":"path-pattern","Values":["/swagger-ui*"]}]' \
+        --priority 10 \
+        --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
+
+    aws elbv2 create-rule \
+        --listener-arn "$ALB_LISTENER_ARN" \
+        --conditions '[{"Field":"path-pattern","Values":["/v3/api-docs*"]}]' \
+        --priority 20 \
+        --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
+
+    log "Swagger roteado via ALB: /swagger-ui/index.html e /v3/api-docs" >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -767,7 +930,7 @@ criar_rds() {
 }
 
 gerar_user_data_backend() {
-    local rds_endpoint=$1
+    local rds_endpoint=$1 s3_bucket=$2
     cat <<EOF
 #!/bin/bash
 
@@ -777,7 +940,7 @@ until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do
 done
 
 apt-get update -y
-apt-get install -y mysql-client curl
+apt-get install -y mysql-client curl docker.io
 
 # Aguarda o RDS aceitar conexões
 until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do
@@ -788,6 +951,22 @@ done
 curl -4 -s "${SQL_URL}" -o /tmp/bdClubeDesbravadores.sql
 mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" "${RDS_DB_NAME}" < /tmp/bdClubeDesbravadores.sql
 rm -f /tmp/bdClubeDesbravadores.sql
+
+# Inicia o Docker e sobe o container do backend
+systemctl start docker
+systemctl enable docker
+docker pull ${BACKEND_DOCKER_IMAGE}
+docker run -d \
+    --name backend \
+    --restart unless-stopped \
+    -p 8080:8080 \
+    -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+    -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" \
+    -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" \
+    -e APP_STORAGE_TYPE="s3" \
+    -e APP_STORAGE_S3_BUCKET="${s3_bucket}" \
+    -e APP_STORAGE_S3_REGION="${REGIAO}" \
+    ${BACKEND_DOCKER_IMAGE}
 EOF
 }
 
@@ -864,6 +1043,7 @@ criar_infraestrutura() {
 
     SG_BACKEND=$(criar_sg "arandu-sg-backend" "SG Backend Arandu")
     sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_FRONTEND"
+    sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_ALB"
     sg_ingress "$SG_BACKEND"  tcp 22   sg     "$SG_FRONTEND"
 
     SG_DB=$(criar_sg "arandu-sg-db" "SG Database Arandu")
@@ -898,18 +1078,28 @@ criar_infraestrutura() {
     FRONTEND_2_ID=$(criar_instancia ec2-arandu-frontend-2 frontend "$SUBNET_PUBLICA_2" 10.0.4.10 "$SG_FRONTEND" user_data_nginx.sh)
     aws ec2 wait instance-running --instance-ids "$FRONTEND_1_ID" "$FRONTEND_2_ID"
 
-    APP_DNS=$(criar_alb "$SG_ALB" "$FRONTEND_1_ID" "$FRONTEND_2_ID")
+    criar_alb "$SG_ALB" "$FRONTEND_1_ID" "$FRONTEND_2_ID"
+    APP_DNS="$ALB_DNS"
     APP_URL="http://$APP_DNS"
+
+    log "Criando bucket S3..."
+    S3_BUCKET=$(criar_s3)
+
+    log "Obtendo instance profile IAM para o backend..."
+    BACKEND_PROFILE=$(obter_instance_profile "$S3_BUCKET")
 
     log "Criando RDS MySQL..."
     RDS_ENDPOINT=$(criar_rds "$SG_DB" "$SUBNET_DB" "$SUBNET_DB_2")
 
     log "Gerando user data do backend..."
-    gerar_user_data_backend "$RDS_ENDPOINT" > user_data_backend.sh
+    gerar_user_data_backend "$RDS_ENDPOINT" "$S3_BUCKET" > user_data_backend.sh
 
     log "Criando instância backend..."
-    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND" user_data_backend.sh)
+    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND" user_data_backend.sh "$BACKEND_PROFILE")
     aws ec2 wait instance-running --instance-ids "$BACKEND_ID"
+
+    log "Configurando roteamento Swagger no ALB..."
+    configurar_backend_alb "$BACKEND_ID"
 
     gerar_script_teste "$APP_URL"
     rm -f user_data_nginx.sh user_data_backend.sh
@@ -917,10 +1107,12 @@ criar_infraestrutura() {
     echo ""
     log "Infraestrutura criada com sucesso!"
     log "EFS ID:             $EFS_ID"
+    log "S3 Bucket:          $S3_BUCKET"
     log "RDS Endpoint:       $RDS_ENDPOINT"
     log "RDS Database:       $RDS_DB_NAME"
     log "RDS User:           $RDS_USERNAME"
     log "URL da aplicação:   $APP_URL"
+    log "Swagger:            $APP_URL/swagger-ui/index.html"
     log "Teste do balanceador: ./$TESTE_LB_SCRIPT"
     warn "Se abrir antes dos targets ficarem saudáveis, aguarde alguns instantes e atualize a página."
 }
@@ -931,7 +1123,7 @@ criar_infraestrutura() {
 deletar_infraestrutura() {
     deletar_instancias
     deletar_rds
-    deletar_albs      
+    deletar_albs
     deletar_efs
     deletar_nat
     deletar_route_tables
@@ -940,6 +1132,8 @@ deletar_infraestrutura() {
     deletar_subnets
     deletar_enis
     deletar_security_groups
+    deletar_s3
+    deletar_iam_backend
 
     log "Removendo arquivos locais..."
     safe_delete aws ec2 delete-key-pair --key-name "$KEY_NAME"
