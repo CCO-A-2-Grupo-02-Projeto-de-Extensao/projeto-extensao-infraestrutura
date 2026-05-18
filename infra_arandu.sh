@@ -549,20 +549,20 @@ configurar_backend_alb() {
         --target-group-arn "$tg_arn" \
         --targets "Id=$backend_id,Port=8080" > /dev/null
 
-    # Roteamento por path: Swagger UI e API docs → backend (prioridade menor = avaliada primeiro)
-    aws elbv2 create-rule \
-        --listener-arn "$ALB_LISTENER_ARN" \
-        --conditions '[{"Field":"path-pattern","Values":["/swagger-ui*"]}]' \
-        --priority 10 \
-        --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
+    # Roteamento por path: Swagger, API docs e todos os endpoints do backend
+    local priority=10
+    for path in "/swagger-ui*" "/v3/api-docs*" "/auth*" "/usuarios*" "/documentos*" \
+                "/comorbidades*" "/diagnosticos*" "/fichas-medicas*" \
+                "/medicacoes*" "/medicamentos*"; do
+        aws elbv2 create-rule \
+            --listener-arn "$ALB_LISTENER_ARN" \
+            --conditions "[{\"Field\":\"path-pattern\",\"Values\":[\"$path\"]}]" \
+            --priority $priority \
+            --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
+        priority=$((priority + 10))
+    done
 
-    aws elbv2 create-rule \
-        --listener-arn "$ALB_LISTENER_ARN" \
-        --conditions '[{"Field":"path-pattern","Values":["/v3/api-docs*"]}]' \
-        --priority 20 \
-        --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
-
-    log "Swagger roteado via ALB: /swagger-ui/index.html e /v3/api-docs" >&2
+    log "ALB roteado: Swagger, /auth*, /usuarios*, /documentos* e demais APIs → backend" >&2
 }
 
 # -----------------------------------------------------------------------------
