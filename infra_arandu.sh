@@ -383,9 +383,9 @@ criar_efs() {
 }
 
 # -----------------------------------------------------------------------------
-# User data — Docker + React frontend + montagem do EFS
+# User data — Docker + nginx servindo frontend a partir do EFS
 # -----------------------------------------------------------------------------
-DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
+FRONTEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
 
 gerar_user_data() {
     local efs_id=$1
@@ -401,6 +401,21 @@ mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=
     "\$EFS_DNS":/ /mnt/efs
 echo "\$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev 0 0" >> /etc/fstab
 
+# Inicia o Docker
+systemctl start docker
+systemctl enable docker
+
+# Popula o EFS com os arquivos da imagem do frontend (apenas uma vez)
+mkdir -p /mnt/efs/frontend
+if [ ! -f /mnt/efs/frontend/.deployed ]; then
+    docker pull ${FRONTEND_DOCKER_IMAGE}
+    docker run --rm \
+        -v /mnt/efs/frontend:/output \
+        ${FRONTEND_DOCKER_IMAGE} \
+        sh -c "cp -r /usr/share/nginx/html/. /output/"
+    touch /mnt/efs/frontend/.deployed
+fi
+
 # Busca o IP privado da instância via metadata da AWS
 INSTANCE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
@@ -412,17 +427,14 @@ SSHKEY
 chmod 400 /home/ubuntu/.ssh/arandu-key.pem
 chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 
-# Inicia o Docker e sobe o container do frontend
-systemctl start docker
-systemctl enable docker
-docker pull ${DOCKER_IMAGE}
+# Sobe nginx servindo o frontend diretamente do EFS
 docker run -d \
     --name frontend \
     --restart unless-stopped \
     -p 80:80 \
     -e INSTANCE_IP="\$INSTANCE_IP" \
-    -v /mnt/efs:/mnt/efs \
-    ${DOCKER_IMAGE}
+    -v /mnt/efs/frontend:/usr/share/nginx/html:ro \
+    ${FRONTEND_DOCKER_IMAGE}
 EOF
 }
 
@@ -1107,6 +1119,8 @@ criar_infraestrutura() {
     echo ""
     log "Infraestrutura criada com sucesso!"
     log "EFS ID:             $EFS_ID"
+    log "Frontend (EFS):     /mnt/efs/frontend  ← servido pelas 2 instâncias"
+    log "Frontend imagem:    $FRONTEND_DOCKER_IMAGE"
     log "S3 Bucket:          $S3_BUCKET"
     log "RDS Endpoint:       $RDS_ENDPOINT"
     log "RDS Database:       $RDS_DB_NAME"
