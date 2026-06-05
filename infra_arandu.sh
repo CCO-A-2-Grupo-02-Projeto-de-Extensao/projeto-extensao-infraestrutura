@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Auto-converte CRLF para LF ao rodar no Linux (mantém compatibilidade Windows/Linux)
 sed -i 's/\r//' "$0" 2>/dev/null || true
 
@@ -58,9 +57,6 @@ err()  { echo -e "\e[31m(!) $*\e[0m"; }
 # -----------------------------------------------------------------------------
 # Utilitários AWS genéricos
 # -----------------------------------------------------------------------------
-
-# Aguarda até que uma condição seja verdadeira (evita sleeps fixos)
-# Uso: aws_wait <segundos_max> <intervalo> <cmd_que_retorna_vazio_quando_pronto>
 aws_wait() {
     local max=$1 interval=$2; shift 2
     local elapsed=0
@@ -74,11 +70,8 @@ aws_wait() {
     return 1
 }
 
-# Deleta um recurso somente se ele existir; silencia erros
-# Nunca propaga código de saída diferente de zero — seguro com set -e
 safe_delete() { "$@" 2>/dev/null || true; }
 
-# Retorna o ARN do ALB pelo nome, ou vazio
 get_alb_arn() {
     aws elbv2 describe-load-balancers \
         --names "$1" \
@@ -86,7 +79,6 @@ get_alb_arn() {
         --output text 2>/dev/null | grep -v None || true
 }
 
-# Retorna o ARN do Target Group pelo nome, ou vazio
 get_tg_arn() {
     aws elbv2 describe-target-groups \
         --names "$1" \
@@ -101,7 +93,6 @@ configurar_credenciais() {
     err "Já digitou suas credenciais de acesso nas últimas 4 horas? (s/n)"
     read -r resposta
     [[ "$resposta" == "s" || "$resposta" == "S" ]] && return
-
     log "Informe as credenciais temporárias da AWS."
     echo "AWS Access Key ID:"    ; read -r accessKey
     echo "AWS Secret Access Key:"; read -r secretKey
@@ -120,7 +111,6 @@ configurar_credenciais() {
 criar_subnet() {
     local key=$1
     local IFS='|'; read -r name cidr az public <<< "${SUBNETS[$key]}"
-
     local id
     id=$(aws ec2 create-subnet \
         --vpc-id "$VPC_ID" \
@@ -129,10 +119,8 @@ criar_subnet() {
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$name}]" \
         --query 'Subnet.SubnetId' \
         --output text)
-
     [[ "$public" == "true" ]] && \
         aws ec2 modify-subnet-attribute --subnet-id "$id" --map-public-ip-on-launch
-
     echo "$id"
 }
 
@@ -144,12 +132,10 @@ criar_route_table() {
         --tag-specifications "ResourceType=route-table,Tags=[{Key=Name,Value=$name}]" \
         --query 'RouteTable.RouteTableId' \
         --output text)
-
     aws ec2 create-route \
         --route-table-id "$rt_id" \
         --destination-cidr-block 0.0.0.0/0 \
         "$gateway_flag" "$gateway_id" > /dev/null
-
     echo "$rt_id"
 }
 
@@ -176,7 +162,6 @@ criar_sg() {
     echo "$id"
 }
 
-# Autoriza uma regra de ingresso por CIDR ou por source-group
 sg_ingress() {
     local sg=$1 proto=$2 port=$3
     if [[ "$4" == "cidr" ]]; then
@@ -199,7 +184,6 @@ criar_nacl_publica() {
         --query 'NetworkAcl.NetworkAclId' \
         --output text)
 
-    # Função interna para criar entradas NACL — evita repetir todos os flags
     nacl_entry() {
         local dir=$1 rule=$2 proto=$3 from=$4 to=$5 action=$6
         local port_range=""
@@ -216,11 +200,10 @@ criar_nacl_publica() {
 
     nacl_entry --ingress 100 tcp  80    80    allow
     nacl_entry --ingress 110 tcp  22    22    allow
-    nacl_entry --ingress 115 tcp  443   443   allow  # HTTPS retorno NAT
-    nacl_entry --ingress 120 tcp  2049  2049  allow  # NFS para EFS
+    nacl_entry --ingress 115 tcp  443   443   allow
+    nacl_entry --ingress 120 tcp  2049  2049  allow
     nacl_entry --ingress 130 tcp  1024  65535 allow
     nacl_entry --egress  100 -1   0     0     allow
-
     echo "$nacl_id"
 }
 
@@ -250,7 +233,6 @@ criar_s3() {
         log "Bucket S3 já existe: $bucket" >&2
     else
         log "Criando bucket S3: $bucket" >&2
-        # us-east-1 não aceita LocationConstraint — as demais regiões precisariam de --create-bucket-configuration
         aws s3api create-bucket --bucket "$bucket" --region "$REGIAO" > /dev/null
         aws s3api put-public-access-block \
             --bucket "$bucket" \
@@ -258,7 +240,6 @@ criar_s3() {
                 "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" > /dev/null
         log "Bucket criado e bloqueio público aplicado." >&2
     fi
-
     echo "$bucket"
 }
 
@@ -278,12 +259,11 @@ deletar_s3() {
 }
 
 # -----------------------------------------------------------------------------
-# IAM — Instance Profile para o backend acessar o S3
+# IAM — Instance Profile
 # -----------------------------------------------------------------------------
 obter_instance_profile() {
     local s3_bucket=$1
 
-    # AWS Academy disponibiliza LabInstanceProfile com permissões amplas
     if aws iam get-instance-profile --instance-profile-name "LabInstanceProfile" \
         --query "InstanceProfile.InstanceProfileName" --output text 2>/dev/null | grep -q "LabInstanceProfile"; then
         log "LabInstanceProfile detectado (AWS Academy) — reutilizando." >&2
@@ -291,7 +271,6 @@ obter_instance_profile() {
         return
     fi
 
-    # Verifica se o profile customizado já existe (re-execução do script)
     if aws iam get-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" 2>/dev/null; then
         log "Instance profile $IAM_PROFILE_NAME já existe, reutilizando." >&2
         echo "$IAM_PROFILE_NAME"
@@ -299,7 +278,6 @@ obter_instance_profile() {
     fi
 
     log "Criando IAM role e instance profile para o backend..." >&2
-
     aws iam create-role \
         --role-name "$IAM_ROLE_NAME" \
         --assume-role-policy-document \
@@ -326,16 +304,12 @@ obter_instance_profile() {
         --instance-profile-name "$IAM_PROFILE_NAME" \
         --role-name "$IAM_ROLE_NAME" > /dev/null
 
-    # IAM é eventualmente consistente; aguarda a propagação antes de usar o profile
     sleep 15
-
     echo "$IAM_PROFILE_NAME"
 }
 
 deletar_iam_backend() {
     log "Removendo IAM role/profile do backend..."
-
-    # Se estiver usando LabInstanceProfile (AWS Academy), não tenta deletar
     if [[ "$(aws iam get-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" \
         --query "InstanceProfile.InstanceProfileName" --output text 2>/dev/null)" != "$IAM_PROFILE_NAME" ]]; then
         warn "Profile $IAM_PROFILE_NAME não encontrado (pode ser LabInstanceProfile), pulando."
@@ -355,7 +329,6 @@ deletar_iam_backend() {
 # -----------------------------------------------------------------------------
 criar_efs() {
     local sg_efs=$1
-
     log "Criando EFS..." >&2
     local efs_id
     efs_id=$(aws efs create-file-system \
@@ -378,15 +351,13 @@ criar_efs() {
             --subnet-id "$subnet" \
             --security-groups "$sg_efs" > /dev/null
     done
-
     echo "$efs_id"
 }
 
 # -----------------------------------------------------------------------------
-# User data — Docker + React frontend + montagem do EFS
+# User data — Docker + nginx
 # -----------------------------------------------------------------------------
-DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
-
+FRONTEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
 gerar_user_data() {
     local efs_id=$1
     cat <<EOF
@@ -394,17 +365,23 @@ gerar_user_data() {
 apt-get update -y
 apt-get install -y docker.io nfs-common
 
-# Monta o EFS
 EFS_DNS="${efs_id}.efs.${REGIAO}.amazonaws.com"
 mkdir -p /mnt/efs
-mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 \
-    "\$EFS_DNS":/ /mnt/efs
+mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 "\$EFS_DNS":/ /mnt/efs
 echo "\$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev 0 0" >> /etc/fstab
 
-# Busca o IP privado da instância via metadata da AWS
+systemctl start docker
+systemctl enable docker
+
+mkdir -p /mnt/efs/frontend
+if [ ! -f /mnt/efs/frontend/.deployed ]; then
+    docker pull ${FRONTEND_DOCKER_IMAGE}
+    docker run --rm -v /mnt/efs/frontend:/output ${FRONTEND_DOCKER_IMAGE} sh -c "cp -r /usr/share/nginx/html/. /output/"
+    touch /mnt/efs/frontend/.deployed
+fi
+
 INSTANCE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
-# Copia a chave SSH para o ubuntu poder saltar para instâncias privadas
 mkdir -p /home/ubuntu/.ssh
 cat << SSHKEY > /home/ubuntu/.ssh/arandu-key.pem
 ${KEY_CONTENT}
@@ -412,17 +389,7 @@ SSHKEY
 chmod 400 /home/ubuntu/.ssh/arandu-key.pem
 chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 
-# Inicia o Docker e sobe o container do frontend
-systemctl start docker
-systemctl enable docker
-docker pull ${DOCKER_IMAGE}
-docker run -d \
-    --name frontend \
-    --restart unless-stopped \
-    -p 80:80 \
-    -e INSTANCE_IP="\$INSTANCE_IP" \
-    -v /mnt/efs:/mnt/efs \
-    ${DOCKER_IMAGE}
+docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="\$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${FRONTEND_DOCKER_IMAGE}
 EOF
 }
 
@@ -431,7 +398,6 @@ EOF
 # -----------------------------------------------------------------------------
 criar_instancia() {
     local name=$1 role=$2 subnet=$3 ip=$4 sg=$5 user_data_file=${6:-} iam_profile=${7:-}
-
     local extra_flags=()
     [[ -n "$user_data_file" ]] && extra_flags+=(--user-data "file://$user_data_file" --associate-public-ip-address)
     [[ -n "$iam_profile" ]] && extra_flags+=(--iam-instance-profile "Name=$iam_profile")
@@ -454,17 +420,15 @@ criar_instancia() {
 # -----------------------------------------------------------------------------
 criar_alb() {
     local sg_alb=$1 inst1=$2 inst2=$3
-
     log "Removendo ALB/TG antigos com o mesmo nome, se existirem..." >&2
-    local old_alb
-    old_alb=$(get_alb_arn "$ALB_NAME")
+
+    local old_alb=$(get_alb_arn "$ALB_NAME")
     if [[ -n "$old_alb" ]]; then
         safe_delete aws elbv2 delete-load-balancer --load-balancer-arn "$old_alb"
         safe_delete aws elbv2 wait load-balancers-deleted --load-balancer-arns "$old_alb"
     fi
 
-    local old_tg
-    old_tg=$(get_tg_arn "$TG_NAME")
+    local old_tg=$(get_tg_arn "$TG_NAME")
     if [[ -n "$old_tg" ]]; then
         safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg"
     fi
@@ -520,14 +484,13 @@ criar_alb() {
 }
 
 # -----------------------------------------------------------------------------
-# Backend — Target Group + regras Swagger no ALB existente
+# Backend — Target Group + regras Swagger
 # -----------------------------------------------------------------------------
 configurar_backend_alb() {
     local backend_id=$1
-
     log "Criando Target Group do backend..." >&2
-    local old_tg_backend
-    old_tg_backend=$(get_tg_arn "$TG_BACKEND_NAME")
+
+    local old_tg_backend=$(get_tg_arn "$TG_BACKEND_NAME")
     [[ -n "$old_tg_backend" ]] && safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg_backend"
 
     local tg_arn
@@ -549,7 +512,6 @@ configurar_backend_alb() {
         --target-group-arn "$tg_arn" \
         --targets "Id=$backend_id,Port=8080" > /dev/null
 
-    # Roteamento por path: Swagger, API docs e todos os endpoints do backend
     local priority=10
     for path in "/swagger-ui*" "/v3/api-docs*" "/auth*" "/usuarios*" "/documentos*" \
                 "/comorbidades*" "/diagnosticos*" "/fichas-medicas*" \
@@ -561,12 +523,11 @@ configurar_backend_alb() {
             --actions "Type=forward,TargetGroupArn=$tg_arn" > /dev/null
         priority=$((priority + 10))
     done
-
     log "ALB roteado: Swagger, /auth*, /usuarios*, /documentos* e demais APIs → backend" >&2
 }
 
 # -----------------------------------------------------------------------------
-# Script de teste do Load Balancer (gerado dinamicamente)
+# Script de teste LB
 # -----------------------------------------------------------------------------
 gerar_script_teste() {
     local url=$1
@@ -575,21 +536,17 @@ gerar_script_teste() {
 URL="$url"
 TOTAL_TESTES=20
 INTERVALO=2
-
 echo "Testando Load Balancer: \$URL"
 echo "Total de testes: \$TOTAL_TESTES"
 echo
-
 for i in \$(seq 1 \$TOTAL_TESTES); do
     echo "Teste \$i..."
     SERVIDOR=\$(curl -s --max-time 10 "\$URL/hostname")
-
     if [ -z "\$SERVIDOR" ]; then
         echo "Sem resposta do Load Balancer"
     else
         echo "Caiu na instância: \$SERVIDOR"
     fi
-
     echo "----------------------------------------"
     sleep \$INTERVALO
 done
@@ -598,303 +555,10 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# Limpeza — recursos dentro da VPC
-# -----------------------------------------------------------------------------
-deletar_instancias() {
-    log "Encerrando instâncias..."
-    local ids
-    ids=$(aws ec2 describe-instances \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-                  "Name=instance-state-name,Values=pending,running,stopping,stopped" \
-        --query "Reservations[].Instances[].InstanceId" \
-        --output text 2>/dev/null || true)
-    if [[ -z "$ids" ]]; then
-        warn "Nenhuma instância encontrada."
-        return
-    fi
-    safe_delete aws ec2 terminate-instances --instance-ids $ids
-    safe_delete aws ec2 wait instance-terminated --instance-ids $ids
-}
-
-deletar_albs() {
-    log "Removendo Load Balancers..."
-
-    # 1. Deleta todos os ALBs da VPC e aguarda cada um ser removido
-    local arns
-    arns=$(aws elbv2 describe-load-balancers \
-        --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" \
-        --output text 2>/dev/null || true)
-
-    for arn in $arns; do
-        safe_delete aws elbv2 delete-load-balancer --load-balancer-arn "$arn"
-        safe_delete aws elbv2 wait load-balancers-deleted --load-balancer-arns "$arn"
-    done
-
-    # 2. Deleta todos os Target Groups da VPC
-    local tg_arns
-    tg_arns=$(aws elbv2 describe-target-groups \
-        --query "TargetGroups[?VpcId=='$VPC_ID'].TargetGroupArn" \
-        --output text 2>/dev/null || true)
-
-    for arn in $tg_arns; do
-        safe_delete aws elbv2 delete-target-group --target-group-arn "$arn"
-    done
-
-    # 3. Garantia extra: tenta deletar pelo nome caso ainda existam
-    local old_alb
-    old_alb=$(get_alb_arn "$ALB_NAME")
-    if [[ -n "$old_alb" ]]; then
-        safe_delete aws elbv2 delete-load-balancer --load-balancer-arn "$old_alb"
-        safe_delete aws elbv2 wait load-balancers-deleted --load-balancer-arns "$old_alb"
-    fi
-
-    local old_tg
-    old_tg=$(get_tg_arn "$TG_NAME")
-    if [[ -n "$old_tg" ]]; then
-        safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg"
-    fi
-
-    # 4. Aguarda ENIs do ALB serem liberadas antes de prosseguir
-    log "Aguardando ENIs do ALB serem liberadas..."
-    aws_wait 120 10 \
-        aws ec2 describe-network-interfaces \
-            --filters "Name=vpc-id,Values=$VPC_ID" \
-                      "Name=description,Values=ELB*" \
-            --query "NetworkInterfaces[].NetworkInterfaceId" \
-            --output text 2>/dev/null || true
-}
-
-deletar_efs() {
-    log "Removendo EFS..."
-    local efs_ids
-    efs_ids=$(aws efs describe-file-systems \
-        --query "FileSystems[?Tags[?Key=='Name'&&Value=='$EFS_NAME']].FileSystemId" \
-        --output text 2>/dev/null || true)
-
-    for efs_id in $efs_ids; do
-        local mt_ids
-        mt_ids=$(aws efs describe-mount-targets \
-            --file-system-id "$efs_id" \
-            --query "MountTargets[].MountTargetId" \
-            --output text 2>/dev/null || true)
-
-        for mt in $mt_ids; do
-            safe_delete aws efs delete-mount-target --mount-target-id "$mt"
-        done
-
-        # Aguarda remoção dos mount targets antes de deletar o EFS
-        aws_wait 120 10 \
-            aws efs describe-mount-targets \
-                --file-system-id "$efs_id" \
-                --query "MountTargets[].MountTargetId" \
-                --output text 2>/dev/null || true
-
-        safe_delete aws efs delete-file-system --file-system-id "$efs_id"
-    done
-}
-
-deletar_nat() {
-    log "Removendo NAT Gateway..."
-    local nat_ids
-    nat_ids=$(aws ec2 describe-nat-gateways \
-        --filter "Name=vpc-id,Values=$VPC_ID" \
-        --query "NatGateways[?State!='deleted'].NatGatewayId" \
-        --output text 2>/dev/null || true)
-
-    for nat in $nat_ids; do
-        local eip
-        eip=$(aws ec2 describe-nat-gateways \
-            --nat-gateway-ids "$nat" \
-            --query "NatGateways[0].NatGatewayAddresses[0].AllocationId" \
-            --output text 2>/dev/null || true)
-        safe_delete aws ec2 delete-nat-gateway --nat-gateway-id "$nat"
-        safe_delete aws ec2 wait nat-gateway-deleted --nat-gateway-ids "$nat"
-        if [[ "$eip" != "None" && -n "$eip" ]]; then
-            safe_delete aws ec2 release-address --allocation-id "$eip"
-        fi
-    done
-}
-
-deletar_route_tables() {
-    log "Removendo tabelas de rota..."
-    local rts
-    rts=$(aws ec2 describe-route-tables \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query "RouteTables[?Associations[?Main==\`false\`]].RouteTableId" \
-        --output text 2>/dev/null || true)
-
-    for rt in $rts; do
-        local assocs
-        assocs=$(aws ec2 describe-route-tables \
-            --route-table-ids "$rt" \
-            --query "RouteTables[].Associations[?Main==\`false\`].RouteTableAssociationId" \
-            --output text 2>/dev/null || true)
-        for assoc in $assocs; do
-            safe_delete aws ec2 disassociate-route-table --association-id "$assoc"
-        done
-        safe_delete aws ec2 delete-route-table --route-table-id "$rt"
-    done
-}
-
-deletar_igw() {
-    log "Removendo Internet Gateway..."
-    local igws
-    igws=$(aws ec2 describe-internet-gateways \
-        --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
-        --query "InternetGateways[].InternetGatewayId" \
-        --output text 2>/dev/null || true)
-    for igw in $igws; do
-        safe_delete aws ec2 detach-internet-gateway --internet-gateway-id "$igw" --vpc-id "$VPC_ID"
-        safe_delete aws ec2 delete-internet-gateway --internet-gateway-id "$igw"
-    done
-}
-
-deletar_nacls() {
-    log "Removendo NACLs customizadas..."
-    local default_nacl
-    default_nacl=$(aws ec2 describe-network-acls \
-        --filters "Name=vpc-id,Values=$VPC_ID" "Name=default,Values=true" \
-        --query "NetworkAcls[0].NetworkAclId" \
-        --output text 2>/dev/null || true)
-
-    local custom_nacls
-    custom_nacls=$(aws ec2 describe-network-acls \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query "NetworkAcls[?IsDefault==\`false\`].NetworkAclId" \
-        --output text 2>/dev/null || true)
-
-    for nacl in $custom_nacls; do
-        local assocs
-        assocs=$(aws ec2 describe-network-acls \
-            --network-acl-ids "$nacl" \
-            --query "NetworkAcls[].Associations[].NetworkAclAssociationId" \
-            --output text 2>/dev/null || true)
-        for assoc in $assocs; do
-            if [[ "$default_nacl" != "None" && -n "$default_nacl" ]]; then
-                safe_delete aws ec2 replace-network-acl-association \
-                    --association-id "$assoc" --network-acl-id "$default_nacl"
-            fi
-        done
-        safe_delete aws ec2 delete-network-acl --network-acl-id "$nacl"
-    done
-}
-
-deletar_subnets() {
-    log "Removendo subnets..."
-    local subnets
-    subnets=$(aws ec2 describe-subnets \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query "Subnets[].SubnetId" \
-        --output text 2>/dev/null || true)
-    for s in $subnets; do
-        safe_delete aws ec2 delete-subnet --subnet-id "$s"
-    done
-}
-
-deletar_enis() {
-    log "Aguardando e removendo interfaces de rede restantes..."
-    aws_wait 180 15 \
-        aws ec2 describe-network-interfaces \
-            --filters "Name=vpc-id,Values=$VPC_ID" \
-            --query "NetworkInterfaces[].NetworkInterfaceId" \
-            --output text 2>/dev/null || true
-
-    local enis
-    enis=$(aws ec2 describe-network-interfaces \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query "NetworkInterfaces[].NetworkInterfaceId" \
-        --output text 2>/dev/null || true)
-
-    for eni in $enis; do
-        local att
-        att=$(aws ec2 describe-network-interfaces \
-            --network-interface-ids "$eni" \
-            --query "NetworkInterfaces[0].Attachment.AttachmentId" \
-            --output text 2>/dev/null || true)
-        if [[ "$att" != "None" && -n "$att" ]]; then
-            safe_delete aws ec2 detach-network-interface --attachment-id "$att" --force
-        fi
-        safe_delete aws ec2 delete-network-interface --network-interface-id "$eni"
-    done
-}
-
-deletar_security_groups() {
-    log "Removendo Security Groups..."
-    local sgs
-    sgs=$(aws ec2 describe-security-groups \
-        --filters "Name=vpc-id,Values=$VPC_ID" \
-        --query "SecurityGroups[?GroupName!='default'].GroupId" \
-        --output text 2>/dev/null || true)
-
-    # Revoga todas as regras antes de deletar (evita dependências cruzadas entre SGs)
-    for sg in $sgs; do
-        local ingress egress
-        ingress=$(aws ec2 describe-security-groups --group-ids "$sg" \
-            --query "SecurityGroups[].IpPermissions" --output json 2>/dev/null || echo "[]")
-        egress=$(aws ec2 describe-security-groups --group-ids "$sg" \
-            --query "SecurityGroups[].IpPermissionsEgress" --output json 2>/dev/null || echo "[]")
-        if [[ "$ingress" != "[]" ]]; then
-            safe_delete aws ec2 revoke-security-group-ingress \
-                --group-id "$sg" --ip-permissions "$ingress"
-        fi
-        if [[ "$egress" != "[]" ]]; then
-            safe_delete aws ec2 revoke-security-group-egress \
-                --group-id "$sg" --ip-permissions "$egress"
-        fi
-    done
-
-    sleep 10
-
-    for sg in $sgs; do
-        safe_delete aws ec2 delete-security-group --group-id "$sg"
-    done
-}
-
-mostrar_dependencias_vpc() {
-    warn "Dependências restantes na VPC $VPC_ID:"
-    for recurso in \
-        "Subnets|aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC_ID --query Subnets[].SubnetId --output text" \
-        "ENIs|aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=$VPC_ID --query NetworkInterfaces[].NetworkInterfaceId --output text" \
-        "SGs|aws ec2 describe-security-groups --filters Name=vpc-id,Values=$VPC_ID --query SecurityGroups[?GroupName!='default'].GroupId --output text" \
-        "Route Tables|aws ec2 describe-route-tables --filters Name=vpc-id,Values=$VPC_ID --query RouteTables[].RouteTableId --output text" \
-        "IGWs|aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=$VPC_ID --query InternetGateways[].InternetGatewayId --output text"
-    do
-        local label="${recurso%%|*}"
-        local cmd="${recurso##*|}"
-        local result
-        result=$(eval "$cmd" 2>/dev/null || true)
-        echo "  $label: ${result:-nenhum}"
-    done
-}
-
-deletar_vpc() {
-    log "Deletando VPC..."
-    for tentativa in 1 2 3; do
-        log "Tentativa $tentativa de limpeza final..."
-        deletar_efs
-        deletar_enis
-        deletar_subnets
-        deletar_security_groups
-        sleep 30
-        if aws ec2 delete-vpc --vpc-id "$VPC_ID" 2>/dev/null; then
-            log "VPC deletada com sucesso!"
-            return 0
-        fi
-        warn "VPC ainda não deletada. Tentando novamente em 30s..."
-        sleep 30
-    done
-    err "Não foi possível deletar a VPC. Dependências restantes:"
-    mostrar_dependencias_vpc
-    warn "Aguarde alguns minutos e rode a opção 2 novamente."
-    return 1
-}
-
-# -----------------------------------------------------------------------------
 # RDS
 # -----------------------------------------------------------------------------
 criar_rds() {
     local sg_db=$1 subnet_db=$2 subnet_db_2=$3
-
     log "Criando Subnet Group do RDS..." >&2
     aws rds create-db-subnet-group \
         --db-subnet-group-name "rds-subnet-group-arandu" \
@@ -922,7 +586,6 @@ criar_rds() {
     log "Aguardando RDS ficar disponível (pode levar ~5 min)..." >&2
     aws rds wait db-instance-available --db-instance-identifier "$RDS_INSTANCE_ID"
 
-    # Retorna o endpoint do RDS
     aws rds describe-db-instances \
         --db-instance-identifier "$RDS_INSTANCE_ID" \
         --query "DBInstances[0].Endpoint.Address" \
@@ -933,54 +596,277 @@ gerar_user_data_backend() {
     local rds_endpoint=$1 s3_bucket=$2
     cat <<EOF
 #!/bin/bash
-
-# Aguarda o NAT Gateway estar disponível antes de qualquer coisa
-until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do
-    sleep 10
-done
-
+until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
 apt-get update -y
 apt-get install -y mysql-client curl docker.io
 
-# Aguarda o RDS aceitar conexões
-until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do
-    sleep 15
-done
+until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
 
-# Baixa e executa o script SQL no RDS
 curl -4 -s "${SQL_URL}" -o /tmp/bdClubeDesbravadores.sql
 mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" "${RDS_DB_NAME}" < /tmp/bdClubeDesbravadores.sql
 rm -f /tmp/bdClubeDesbravadores.sql
 
-# Inicia o Docker e sobe o container do backend
 systemctl start docker
 systemctl enable docker
 docker pull ${BACKEND_DOCKER_IMAGE}
-docker run -d \
-    --name backend \
-    --restart unless-stopped \
-    -p 8080:8080 \
-    -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
-    -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" \
-    -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" \
-    -e APP_STORAGE_TYPE="s3" \
-    -e APP_STORAGE_S3_BUCKET="${s3_bucket}" \
-    -e APP_STORAGE_S3_REGION="${REGIAO}" \
-    ${BACKEND_DOCKER_IMAGE}
+docker run -d --name backend --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" ${BACKEND_DOCKER_IMAGE}
 EOF
 }
 
 deletar_rds() {
     log "Removendo instância RDS..."
-    safe_delete aws rds delete-db-instance \
-        --db-instance-identifier "$RDS_INSTANCE_ID" \
-        --skip-final-snapshot
-    safe_delete aws rds wait db-instance-deleted \
-        --db-instance-identifier "$RDS_INSTANCE_ID"
-
+    safe_delete aws rds delete-db-instance --db-instance-identifier "$RDS_INSTANCE_ID" --skip-final-snapshot
+    safe_delete aws rds wait db-instance-deleted --db-instance-identifier "$RDS_INSTANCE_ID"
     log "Removendo Subnet Group do RDS..."
-    safe_delete aws rds delete-db-subnet-group \
-        --db-subnet-group-name "rds-subnet-group-arandu"
+    safe_delete aws rds delete-db-subnet-group --db-subnet-group-name "rds-subnet-group-arandu"
+}
+
+# -----------------------------------------------------------------------------
+# Observabilidade (CloudWatch e Cost Explorer)
+# -----------------------------------------------------------------------------
+criar_dashboard_cloudwatch() {
+    log "Criando Dashboard no CloudWatch (Arandu-Dashboard)..." >&2
+    local dashboard_name="Arandu-Dashboard"
+
+    local alb_suffix=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" \
+        --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null | awk -F':loadbalancer/' '{print $2}')
+
+    cat <<EOF > dashboard.json
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 12, "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/EC2", "CPUUtilization", "InstanceId", "$FRONTEND_1_ID" ],
+          [ ".", ".", ".", "$FRONTEND_2_ID" ],
+          [ ".", ".", ".", "$BACKEND_ID" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGIAO",
+        "title": "Uso de CPU - Instâncias EC2"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 0, "width": 12, "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "$RDS_INSTANCE_ID" ],
+          [ ".", "DatabaseConnections", ".", "." ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGIAO",
+        "title": "Métricas RDS (CPU e Conexões ativas)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 6, "width": 12, "height": 6,
+      "properties": {
+        "metrics": [
+          [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "$alb_suffix" ]
+        ],
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGIAO",
+        "title": "Total de Requisições - Load Balancer",
+        "stat": "Sum"
+      }
+    }
+  ]
+}
+EOF
+
+    aws cloudwatch put-dashboard --dashboard-name "$dashboard_name" --dashboard-body file://dashboard.json > /dev/null
+    rm -f dashboard.json
+    
+    DASHBOARD_URL="https://${REGIAO}.console.aws.amazon.com/cloudwatch/home?region=${REGIAO}#dashboards/dashboard/${dashboard_name}"
+}
+
+deletar_dashboard_cloudwatch() {
+    log "Removendo Dashboard do CloudWatch..."
+    safe_delete aws cloudwatch delete-dashboards --dashboard-names "Arandu-Dashboard"
+}
+
+consultar_custos() {
+    log "Consultando custos do mês atual via AWS Cost Explorer..."
+    local start_date=$(date +%Y-%m-01)
+    local end_date=$(date +%Y-%m-%d)
+
+    if [[ "$start_date" == "$end_date" ]]; then
+        end_date=$(date -d "+1 day" +%Y-%m-%d 2>/dev/null || date -v+1d +%Y-%m-%d)
+    fi
+
+    local custo=$(aws ce get-cost-and-usage \
+        --time-period Start=$start_date,End=$end_date \
+        --granularity MONTHLY \
+        --metrics "UnblendedCost" \
+        --query 'ResultsByTime[0].Total.UnblendedCost.Amount' \
+        --output text 2>/dev/null || echo "inativo")
+
+    if [[ "$custo" != "inativo" && -n "$custo" ]]; then
+        log "Custo estimado acumulado ($start_date a $end_date): \$ $(printf "%.2f" "$custo") USD"
+    else
+        warn "Cost Explorer inativo ou sem permissão. Ative em: https://us-east-1.console.aws.amazon.com/cost-management/home"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Limpeza — recursos dentro da VPC
+# -----------------------------------------------------------------------------
+deletar_instancias() {
+    log "Encerrando instâncias..."
+    local ids=$(aws ec2 describe-instances --filters "Name=vpc-id,Values=$VPC_ID" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[].Instances[].InstanceId" --output text 2>/dev/null || true)
+    if [[ -z "$ids" ]]; then warn "Nenhuma instância encontrada."; return; fi
+    safe_delete aws ec2 terminate-instances --instance-ids $ids
+    safe_delete aws ec2 wait instance-terminated --instance-ids $ids
+}
+
+deletar_albs() {
+    log "Removendo Load Balancers..."
+    local arns=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?VpcId=='$VPC_ID'].LoadBalancerArn" --output text 2>/dev/null || true)
+    for arn in $arns; do
+        safe_delete aws elbv2 delete-load-balancer --load-balancer-arn "$arn"
+        safe_delete aws elbv2 wait load-balancers-deleted --load-balancer-arns "$arn"
+    done
+    local tg_arns=$(aws elbv2 describe-target-groups --query "TargetGroups[?VpcId=='$VPC_ID'].TargetGroupArn" --output text 2>/dev/null || true)
+    for arn in $tg_arns; do safe_delete aws elbv2 delete-target-group --target-group-arn "$arn"; done
+
+    local old_alb=$(get_alb_arn "$ALB_NAME")
+    if [[ -n "$old_alb" ]]; then
+        safe_delete aws elbv2 delete-load-balancer --load-balancer-arn "$old_alb"
+        safe_delete aws elbv2 wait load-balancers-deleted --load-balancer-arns "$old_alb"
+    fi
+    local old_tg=$(get_tg_arn "$TG_NAME")
+    if [[ -n "$old_tg" ]]; then safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg"; fi
+
+    log "Aguardando ENIs do ALB serem liberadas..."
+    aws_wait 120 10 aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC_ID" "Name=description,Values=ELB*" --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || true
+}
+
+deletar_efs() {
+    log "Removendo EFS..."
+    local efs_ids=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name'&&Value=='$EFS_NAME']].FileSystemId" --output text 2>/dev/null || true)
+    for efs_id in $efs_ids; do
+        local mt_ids=$(aws efs describe-mount-targets --file-system-id "$efs_id" --query "MountTargets[].MountTargetId" --output text 2>/dev/null || true)
+        for mt in $mt_ids; do safe_delete aws efs delete-mount-target --mount-target-id "$mt"; done
+        aws_wait 120 10 aws efs describe-mount-targets --file-system-id "$efs_id" --query "MountTargets[].MountTargetId" --output text 2>/dev/null || true
+        safe_delete aws efs delete-file-system --file-system-id "$efs_id"
+    done
+}
+
+deletar_nat() {
+    log "Removendo NAT Gateway..."
+    local nat_ids=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[?State!='deleted'].NatGatewayId" --output text 2>/dev/null || true)
+    for nat in $nat_ids; do
+        local eip=$(aws ec2 describe-nat-gateways --nat-gateway-ids "$nat" --query "NatGateways[0].NatGatewayAddresses[0].AllocationId" --output text 2>/dev/null || true)
+        safe_delete aws ec2 delete-nat-gateway --nat-gateway-id "$nat"
+        safe_delete aws ec2 wait nat-gateway-deleted --nat-gateway-ids "$nat"
+        if [[ "$eip" != "None" && -n "$eip" ]]; then safe_delete aws ec2 release-address --allocation-id "$eip"; fi
+    done
+}
+
+deletar_route_tables() {
+    log "Removendo tabelas de rota..."
+    local rts=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[?Main==\false\]].RouteTableId" --output text 2>/dev/null || true)
+    for rt in $rts; do
+        local assocs=$(aws ec2 describe-route-tables --route-table-ids "$rt" --query "RouteTables[].Associations[?Main==\false\].RouteTableAssociationId" --output text 2>/dev/null || true)
+        for assoc in $assocs; do safe_delete aws ec2 disassociate-route-table --association-id "$assoc"; done
+        safe_delete aws ec2 delete-route-table --route-table-id "$rt"
+    done
+}
+
+deletar_igw() {
+    log "Removendo Internet Gateway..."
+    local igws=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$VPC_ID" --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || true)
+    for igw in $igws; do
+        safe_delete aws ec2 detach-internet-gateway --internet-gateway-id "$igw" --vpc-id "$VPC_ID"
+        safe_delete aws ec2 delete-internet-gateway --internet-gateway-id "$igw"
+    done
+}
+
+deletar_nacls() {
+    log "Removendo NACLs customizadas..."
+    local default_nacl=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" "Name=default,Values=true" --query "NetworkAcls[0].NetworkAclId" --output text 2>/dev/null || true)
+    local custom_nacls=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkAcls[?IsDefault==\false\].NetworkAclId" --output text 2>/dev/null || true)
+    for nacl in $custom_nacls; do
+        local assocs=$(aws ec2 describe-network-acls --network-acl-ids "$nacl" --query "NetworkAcls[].Associations[].NetworkAclAssociationId" --output text 2>/dev/null || true)
+        for assoc in $assocs; do
+            if [[ "$default_nacl" != "None" && -n "$default_nacl" ]]; then
+                safe_delete aws ec2 replace-network-acl-association --association-id "$assoc" --network-acl-id "$default_nacl"
+            fi
+        done
+        safe_delete aws ec2 delete-network-acl --network-acl-id "$nacl"
+    done
+}
+
+deletar_subnets() {
+    log "Removendo subnets..."
+    local subnets=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[].SubnetId" --output text 2>/dev/null || true)
+    for s in $subnets; do safe_delete aws ec2 delete-subnet --subnet-id "$s"; done
+}
+
+deletar_enis() {
+    log "Aguardando e removendo interfaces de rede restantes..."
+    aws_wait 180 15 aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || true
+    local enis=$(aws ec2 describe-network-interfaces --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkInterfaces[].NetworkInterfaceId" --output text 2>/dev/null || true)
+    for eni in $enis; do
+        local att=$(aws ec2 describe-network-interfaces --network-interface-ids "$eni" --query "NetworkInterfaces[0].Attachment.AttachmentId" --output text 2>/dev/null || true)
+        if [[ "$att" != "None" && -n "$att" ]]; then safe_delete aws ec2 detach-network-interface --attachment-id "$att" --force; fi
+        safe_delete aws ec2 delete-network-interface --network-interface-id "$eni"
+    done
+}
+
+deletar_security_groups() {
+    log "Removendo Security Groups..."
+    local sgs=$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null || true)
+    for sg in $sgs; do
+        local ingress=$(aws ec2 describe-security-groups --group-ids "$sg" --query "SecurityGroups[].IpPermissions" --output json 2>/dev/null || echo "[]")
+        local egress=$(aws ec2 describe-security-groups --group-ids "$sg" --query "SecurityGroups[].IpPermissionsEgress" --output json 2>/dev/null || echo "[]")
+        if [[ "$ingress" != "[]" ]]; then safe_delete aws ec2 revoke-security-group-ingress --group-id "$sg" --ip-permissions "$ingress"; fi
+        if [[ "$egress" != "[]" ]]; then safe_delete aws ec2 revoke-security-group-egress --group-id "$sg" --ip-permissions "$egress"; fi
+    done
+    sleep 10
+    for sg in $sgs; do safe_delete aws ec2 delete-security-group --group-id "$sg"; done
+}
+
+mostrar_dependencias_vpc() {
+    warn "Dependências restantes na VPC $VPC_ID:"
+    for recurso in \
+        "Subnets|aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC_ID --query Subnets[].SubnetId --output text" \
+        "ENIs|aws ec2 describe-network-interfaces --filters Name=vpc-id,Values=$VPC_ID --query NetworkInterfaces[].NetworkInterfaceId --output text" \
+        "SGs|aws ec2 describe-security-groups --filters Name=vpc-id,Values=$VPC_ID --query SecurityGroups[?GroupName!='default'].GroupId --output text" \
+        "Route Tables|aws ec2 describe-route-tables --filters Name=vpc-id,Values=$VPC_ID --query RouteTables[].RouteTableId --output text" \
+        "IGWs|aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=$VPC_ID --query InternetGateways[].InternetGatewayId --output text"
+    do
+        local label="${recurso%%|*}"
+        local cmd="${recurso##*|}"
+        local result=$(eval "$cmd" 2>/dev/null || true)
+        echo "  $label: ${result:-nenhum}"
+    done
+}
+
+deletar_vpc() {
+    log "Deletando VPC..."
+    for tentativa in 1 2 3; do
+        log "Tentativa $tentativa de limpeza final..."
+        deletar_efs
+        deletar_enis
+        deletar_subnets
+        deletar_security_groups
+        sleep 30
+        if aws ec2 delete-vpc --vpc-id "$VPC_ID" 2>/dev/null; then log "VPC deletada com sucesso!"; return 0; fi
+        warn "VPC ainda não deletada. Tentando novamente em 30s..."
+        sleep 30
+    done
+    err "Não foi possível deletar a VPC. Dependências restantes:"
+    mostrar_dependencias_vpc
+    warn "Aguarde alguns minutos e rode a opção 2 novamente."
+    return 1
 }
 
 # -----------------------------------------------------------------------------
@@ -1033,19 +919,15 @@ criar_infraestrutura() {
     log "Criando Security Groups..."
     SG_ALB=$(criar_sg "arandu-sg-alb" "SG Load Balancer Arandu")
     sg_ingress "$SG_ALB"      tcp 80   cidr   0.0.0.0/0
-
     SG_FRONTEND=$(criar_sg "arandu-sg-frontend" "SG Frontend Arandu")
     sg_ingress "$SG_FRONTEND" tcp 22   cidr   0.0.0.0/0
     sg_ingress "$SG_FRONTEND" tcp 80   sg     "$SG_ALB"
-
     SG_EFS=$(criar_sg "arandu-sg-efs" "SG EFS Arandu")
     sg_ingress "$SG_EFS"      tcp 2049 sg     "$SG_FRONTEND"
-
     SG_BACKEND=$(criar_sg "arandu-sg-backend" "SG Backend Arandu")
     sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_FRONTEND"
     sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_ALB"
     sg_ingress "$SG_BACKEND"  tcp 22   sg     "$SG_FRONTEND"
-
     SG_DB=$(criar_sg "arandu-sg-db" "SG Database Arandu")
     sg_ingress "$SG_DB"       tcp 3306 sg     "$SG_BACKEND"
     sg_ingress "$SG_DB"       tcp 22   sg     "$SG_BACKEND"
@@ -1067,7 +949,6 @@ criar_infraestrutura() {
         --output text > arandu-key.pem
     chmod 400 arandu-key.pem
 
-    # EFS criado antes das instâncias para que o ID esteja disponível no user data
     EFS_ID=$(criar_efs "$SG_EFS")
 
     log "Gerando user data do Nginx + EFS..."
@@ -1077,8 +958,8 @@ criar_infraestrutura() {
     FRONTEND_1_ID=$(criar_instancia ec2-arandu-frontend-1 frontend "$SUBNET_PUBLICA"   10.0.1.10 "$SG_FRONTEND" user_data_nginx.sh)
     FRONTEND_2_ID=$(criar_instancia ec2-arandu-frontend-2 frontend "$SUBNET_PUBLICA_2" 10.0.4.10 "$SG_FRONTEND" user_data_nginx.sh)
     aws ec2 wait instance-running --instance-ids "$FRONTEND_1_ID" "$FRONTEND_2_ID"
-
     criar_alb "$SG_ALB" "$FRONTEND_1_ID" "$FRONTEND_2_ID"
+
     APP_DNS="$ALB_DNS"
     APP_URL="http://$APP_DNS"
 
@@ -1104,15 +985,21 @@ criar_infraestrutura() {
     gerar_script_teste "$APP_URL"
     rm -f user_data_nginx.sh user_data_backend.sh
 
+    log "Configurando Observabilidade..."
+    criar_dashboard_cloudwatch
+
     echo ""
     log "Infraestrutura criada com sucesso!"
     log "EFS ID:             $EFS_ID"
+    log "Frontend (EFS):     /mnt/efs/frontend  ← servido pelas 2 instâncias"
+    log "Frontend imagem:    $FRONTEND_DOCKER_IMAGE"
     log "S3 Bucket:          $S3_BUCKET"
     log "RDS Endpoint:       $RDS_ENDPOINT"
     log "RDS Database:       $RDS_DB_NAME"
     log "RDS User:           $RDS_USERNAME"
     log "URL da aplicação:   $APP_URL"
     log "Swagger:            $APP_URL/swagger-ui/index.html"
+    log "CloudWatch Dash:    $DASHBOARD_URL"
     log "Teste do balanceador: ./$TESTE_LB_SCRIPT"
     warn "Se abrir antes dos targets ficarem saudáveis, aguarde alguns instantes e atualize a página."
 }
@@ -1121,6 +1008,7 @@ criar_infraestrutura() {
 # Fluxo principal — Deleção
 # -----------------------------------------------------------------------------
 deletar_infraestrutura() {
+    deletar_dashboard_cloudwatch
     deletar_instancias
     deletar_rds
     deletar_albs
@@ -1138,7 +1026,6 @@ deletar_infraestrutura() {
     log "Removendo arquivos locais..."
     safe_delete aws ec2 delete-key-pair --key-name "$KEY_NAME"
     rm -f arandu-key.pem "$TESTE_LB_SCRIPT"
-
     deletar_vpc
 }
 
@@ -1161,6 +1048,12 @@ else
     err "VPC já existe: $VPC_ID"
     echo "1 - Manter infraestrutura"
     echo "2 - Deletar TUDO da VPC"
+    echo "3 - Consultar Custos (AWS Cost Explorer)"
     read -r opcao
-    [[ "$opcao" == "2" ]] && deletar_infraestrutura
+
+    if [[ "$opcao" == "2" ]]; then
+        deletar_infraestrutura
+    elif [[ "$opcao" == "3" ]]; then
+        consultar_custos
+    fi
 fi
