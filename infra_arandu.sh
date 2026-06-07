@@ -50,9 +50,10 @@ declare -A SUBNETS=(
 # -----------------------------------------------------------------------------
 # Utilitários de log
 # -----------------------------------------------------------------------------
-log()  { echo -e "\e[32m(!) $*\e[0m"; }
-warn() { echo -e "\e[33m(!) $*\e[0m"; }
-err()  { echo -e "\e[31m(!) $*\e[0m"; }
+ts()   { date +"%H:%M:%S"; }
+log()  { echo -e "\e[32m[$(ts)] (!) $*\e[0m"; }
+warn() { echo -e "\e[33m[$(ts)] (!) $*\e[0m"; }
+err()  { echo -e "\e[31m[$(ts)] (!) $*\e[0m"; }
 
 # -----------------------------------------------------------------------------
 # Utilitários AWS genéricos
@@ -772,7 +773,7 @@ deletar_nat() {
 
 deletar_route_tables() {
     log "Removendo tabelas de rota..."
-    local rts=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[?Main==\false\]].RouteTableId" --output text 2>/dev/null || true)
+    local rts=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?length(Associations[?Main==\`true\`]) == \`0\`].RouteTableId" --output text 2>/dev/null || true)
     for rt in $rts; do
         local assocs=$(aws ec2 describe-route-tables --route-table-ids "$rt" --query "RouteTables[].Associations[?Main==\false\].RouteTableAssociationId" --output text 2>/dev/null || true)
         for assoc in $assocs; do safe_delete aws ec2 disassociate-route-table --association-id "$assoc"; done
@@ -855,6 +856,8 @@ deletar_vpc() {
     for tentativa in 1 2 3; do
         log "Tentativa $tentativa de limpeza final..."
         deletar_efs
+        deletar_route_tables
+        deletar_nacls
         deletar_enis
         deletar_subnets
         deletar_security_groups
