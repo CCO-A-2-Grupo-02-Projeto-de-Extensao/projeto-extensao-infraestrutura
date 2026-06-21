@@ -626,65 +626,212 @@ deletar_rds() {
 # Observabilidade (CloudWatch e Cost Explorer)
 # -----------------------------------------------------------------------------
 criar_dashboard_cloudwatch() {
-    log "Criando Dashboard no CloudWatch (Arandu-Dashboard)..." >&2
+    log "Criando Dashboard no CloudWatch (Arandu-Dashboard)..."
     local dashboard_name="Arandu-Dashboard"
 
-    local alb_suffix=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" \
-        --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null | awk -F':loadbalancer/' '{print $2}')
+    local alb_suffix
+    alb_suffix=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" \
+        --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null \
+        | awk -F':loadbalancer/' '{print $2}')
 
-    cat <<EOF > dashboard.json
-{
-  "widgets": [
-    {
-      "type": "metric",
-      "x": 0, "y": 0, "width": 12, "height": 6,
-      "properties": {
-        "metrics": [
-          [ "AWS/EC2", "CPUUtilization", "InstanceId", "$FRONTEND_1_ID" ],
-          [ ".", ".", ".", "$FRONTEND_2_ID" ],
-          [ ".", ".", ".", "$BACKEND_ID" ]
-        ],
-        "view": "timeSeries",
-        "stacked": false,
-        "region": "$REGIAO",
-        "title": "Uso de CPU - Instâncias EC2"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 12, "y": 0, "width": 12, "height": 6,
-      "properties": {
-        "metrics": [
-          [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "$RDS_INSTANCE_ID" ],
-          [ ".", "DatabaseConnections", ".", "." ]
-        ],
-        "view": "timeSeries",
-        "stacked": false,
-        "region": "$REGIAO",
-        "title": "Métricas RDS (CPU e Conexões ativas)"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0, "y": 6, "width": 12, "height": 6,
-      "properties": {
-        "metrics": [
-          [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "$alb_suffix" ]
-        ],
-        "view": "timeSeries",
-        "stacked": false,
-        "region": "$REGIAO",
-        "title": "Total de Requisições - Load Balancer",
-        "stat": "Sum"
-      }
-    }
-  ]
-}
-EOF
+    if [[ -z "$alb_suffix" ]]; then
+        warn "Nao foi possivel obter o ARN do ALB — dashboard criado sem metricas de ALB."
+    fi
 
-    aws cloudwatch put-dashboard --dashboard-name "$dashboard_name" --dashboard-body file://dashboard.json > /dev/null
-    rm -f dashboard.json
-    
+    # Gera JSON via python3 com ensure_ascii=True para evitar bugs de encoding
+    # com caracteres acentuados em ambientes sem UTF-8 configurado corretamente.
+    local dashboard_body
+    dashboard_body=$(python3 - "$REGIAO" "$FRONTEND_1_ID" "$FRONTEND_2_ID" \
+                              "$BACKEND_ID" "$RDS_INSTANCE_ID" "$alb_suffix" <<'PYEOF'
+import json, sys
+
+r, fe1, fe2, be, rds, alb = sys.argv[1:]
+
+def metric(ns, name, dim_key, dim_val, **props):
+    entry = [ns, name, dim_key, dim_val]
+    if props:
+        entry.append(props)
+    return entry
+
+widgets = [
+    # ── Cabecalho ──────────────────────────────────────────────────────────
+    {
+        "type": "text",
+        "x": 0, "y": 0, "width": 24, "height": 2,
+        "properties": {
+            "markdown": (
+                "# Arandu Digital — Monitoramento de Infraestrutura\n"
+                "Dashboard gerado automaticamente | Regiao: **" + r + "**"
+            )
+        }
+    },
+    # ── CPU EC2 ────────────────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 0, "y": 2, "width": 12, "height": 6,
+        "properties": {
+            "title": "CPU das Instancias EC2 (%)",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/EC2", "CPUUtilization", "InstanceId", fe1, {"label": "Frontend 1", "color": "#1f77b4"}],
+                [".",       ".",              ".",          fe2, {"label": "Frontend 2", "color": "#ff7f0e"}],
+                [".",       ".",              ".",          be,  {"label": "Backend",    "color": "#2ca02c"}],
+            ],
+            "annotations": {
+                "horizontal": [{"label": "Alerta 80%", "value": 80, "color": "#d62728", "fill": "above"}]
+            },
+            "yAxis": {"left": {"min": 0, "max": 100, "label": "%"}}
+        }
+    },
+    # ── Requisicoes e Saude ALB ────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 12, "y": 2, "width": 12, "height": 6,
+        "properties": {
+            "title": "Requisicoes e Hosts Saudaveis (ALB)",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/ApplicationELB", "RequestCount",    "LoadBalancer", alb,
+                 {"stat": "Sum",     "label": "Requisicoes (sum)",  "color": "#1f77b4"}],
+                [".",                  "HealthyHostCount",".",        alb,
+                 {"stat": "Average", "label": "Hosts saudaveis",    "color": "#2ca02c", "yAxis": "right"}],
+            ],
+            "yAxis": {
+                "left":  {"label": "Requisicoes", "min": 0},
+                "right": {"label": "Hosts",       "min": 0}
+            }
+        }
+    },
+    # ── Erros 5xx ALB ─────────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 0, "y": 8, "width": 8, "height": 6,
+        "properties": {
+            "title": "Erros 5xx (ALB)",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", alb,
+                 {"stat": "Sum", "label": "5xx Target", "color": "#d62728"}],
+                [".",                  "HTTPCode_ELB_5XX_Count",    ".",             alb,
+                 {"stat": "Sum", "label": "5xx ELB",    "color": "#ff7f0e"}],
+            ],
+            "annotations": {
+                "horizontal": [{"label": "Limite", "value": 10, "color": "#d62728"}]
+            },
+            "yAxis": {"left": {"min": 0}}
+        }
+    },
+    # ── Erros 4xx ALB ─────────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 8, "y": 8, "width": 8, "height": 6,
+        "properties": {
+            "title": "Erros 4xx (ALB)",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", "LoadBalancer", alb,
+                 {"stat": "Sum", "label": "4xx Target", "color": "#ff7f0e"}],
+                [".",                  "HTTPCode_ELB_4XX_Count",    ".",             alb,
+                 {"stat": "Sum", "label": "4xx ELB",    "color": "#ffbb78"}],
+            ],
+            "yAxis": {"left": {"min": 0}}
+        }
+    },
+    # ── Latencia ALB ───────────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 16, "y": 8, "width": 8, "height": 6,
+        "properties": {
+            "title": "Latencia de Resposta (ALB)",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", alb,
+                 {"stat": "p50", "label": "p50", "color": "#2ca02c"}],
+                [".",                  ".",                  ".",             alb,
+                 {"stat": "p90", "label": "p90", "color": "#ff7f0e"}],
+                [".",                  ".",                  ".",             alb,
+                 {"stat": "p99", "label": "p99", "color": "#d62728"}],
+            ],
+            "annotations": {
+                "horizontal": [{"label": "SLA 1s", "value": 1, "color": "#d62728"}]
+            },
+            "yAxis": {"left": {"min": 0, "label": "segundos"}}
+        }
+    },
+    # ── RDS CPU e Conexoes ─────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 0, "y": 14, "width": 8, "height": 6,
+        "properties": {
+            "title": "RDS — CPU e Conexoes",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/RDS", "CPUUtilization",     "DBInstanceIdentifier", rds,
+                 {"label": "CPU (%)",  "color": "#1f77b4", "yAxis": "left"}],
+                [".",       "DatabaseConnections", ".",                    rds,
+                 {"label": "Conexoes", "color": "#ff7f0e", "yAxis": "right"}],
+            ],
+            "yAxis": {
+                "left":  {"label": "CPU (%)",  "min": 0, "max": 100},
+                "right": {"label": "Conexoes", "min": 0}
+            }
+        }
+    },
+    # ── RDS Armazenamento e Memoria ────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 8, "y": 14, "width": 8, "height": 6,
+        "properties": {
+            "title": "RDS — Storage e Memoria Livre",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 300,
+            "metrics": [
+                ["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", rds,
+                 {"stat": "Minimum", "label": "Storage Livre", "color": "#2ca02c"}],
+                [".",       "FreeableMemory",   ".",                    rds,
+                 {"stat": "Minimum", "label": "Memoria Livre", "color": "#17becf"}],
+            ],
+            "yAxis": {"left": {"min": 0, "label": "bytes"}}
+        }
+    },
+    # ── RDS Latencia ───────────────────────────────────────────────────────
+    {
+        "type": "metric",
+        "x": 16, "y": 14, "width": 8, "height": 6,
+        "properties": {
+            "title": "RDS — Latencia de Leitura e Escrita",
+            "view": "timeSeries", "stacked": False,
+            "region": r, "period": 60,
+            "metrics": [
+                ["AWS/RDS", "ReadLatency",  "DBInstanceIdentifier", rds,
+                 {"stat": "Average", "label": "Leitura",  "color": "#1f77b4"}],
+                [".",       "WriteLatency", ".",                    rds,
+                 {"stat": "Average", "label": "Escrita",  "color": "#ff7f0e"}],
+            ],
+            "yAxis": {"left": {"min": 0, "label": "segundos"}}
+        }
+    },
+]
+
+print(json.dumps({"widgets": widgets}, ensure_ascii=True))
+PYEOF
+)
+
+    if [[ -z "$dashboard_body" ]]; then
+        err "Falha ao gerar o JSON do dashboard via python3."
+        return 1
+    fi
+
+    aws cloudwatch put-dashboard \
+        --dashboard-name "$dashboard_name" \
+        --dashboard-body "$dashboard_body" > /dev/null
+
     DASHBOARD_URL="https://${REGIAO}.console.aws.amazon.com/cloudwatch/home?region=${REGIAO}#dashboards/dashboard/${dashboard_name}"
 }
 
