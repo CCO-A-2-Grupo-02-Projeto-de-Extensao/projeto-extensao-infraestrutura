@@ -25,7 +25,10 @@ EFS_NAME="efs-arandu"
 RDS_INSTANCE_ID="rds-arandu-db"
 RDS_DB_NAME="bdClubeDesbravadores"
 RDS_USERNAME="admin"
-RDS_PASSWORD="arandu2026"
+# Segredos gerados a cada provisionamento — nunca ficam versionados. Para reaproveitar
+# uma stack já existente, exporte a variável antes de rodar: RDS_PASSWORD=... ./infra_arandu.sh
+RDS_PASSWORD="${RDS_PASSWORD:-$(openssl rand -hex 16)}"
+JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 RDS_CLASS="db.t3.micro"
 RDS_ENGINE="mysql"
 RDS_ENGINE_VERSION="8.0"
@@ -610,7 +613,7 @@ rm -f /tmp/bdClubeDesbravadores.sql
 systemctl start docker
 systemctl enable docker
 docker pull ${BACKEND_DOCKER_IMAGE}
-docker run -d --name backend --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" ${BACKEND_DOCKER_IMAGE}
+docker run -d --name backend --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" ${BACKEND_DOCKER_IMAGE}
 EOF
 }
 
@@ -1147,6 +1150,7 @@ criar_infraestrutura() {
     log "RDS Endpoint:       $RDS_ENDPOINT"
     log "RDS Database:       $RDS_DB_NAME"
     log "RDS User:           $RDS_USERNAME"
+    log "RDS Password:       $RDS_PASSWORD  ← gerada agora, anote se for conectar no banco"
     log "URL da aplicação:   $APP_URL"
     log "Swagger:            $APP_URL/swagger-ui/index.html"
     log "CloudWatch Dash:    $DASHBOARD_URL"
