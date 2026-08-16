@@ -1,0 +1,24 @@
+title = "Arandu Digital"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "senha-literal-em-properties"
+description = "Senha escrita direto no application.properties em vez de vir de variavel de ambiente"
+regex = '''(?im)^\s*spring\.(datasource|security\.user)\.password\s*=\s*[^$\s][^\s]*'''
+path = '''\.properties$'''
+
+[[rules]]
+id = "segredo-literal-no-java"
+description = "Segredo escrito direto no codigo Java"
+regex = '''(?i)(secret|senha|password)\s*=\s*"[^"]{8,}"'''
+path = '''\.java$'''
+[rules.allowlist]
+regexes = ['''dev-local-somente-nao-usar-em-producao''']
+
+[[rules]]
+id = "senha-literal-em-shell"
+description = "Senha escrita direto em script shell em vez de gerada ou vinda do ambiente"
+regex = '''(?im)^\s*[A-Z_]*(PASSWORD|SENHA|SECRET)\s*=\s*"[^"$][^"]*"'''
+path = '''\.sh$'''
