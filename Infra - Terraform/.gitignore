@@ -1,0 +1,19 @@
+# Locais do Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+.terraformrc
+terraform.rc
+
+# Variaveis com segredos e chaves locais
+terraform.tfvars
+*.auto.tfvars
+arandu-key.pem
+*.pem
