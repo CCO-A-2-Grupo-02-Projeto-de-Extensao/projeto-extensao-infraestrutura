@@ -109,6 +109,12 @@ locals {
     "fichas_medicas" = { priority = 80,  path = "/fichas-medicas*" }
     "medicacoes"     = { priority = 90,  path = "/medicacoes*" }
     "medicamentos"   = { priority = 100, path = "/medicamentos*" }
+    "pessoas"        = { priority = 110, path = "/pessoas*" }
+    "ocorrencias"    = { priority = 120, path = "/ocorrencias*" }
+    "unidades"       = { priority = 130, path = "/unidades*" }
+    "generos"        = { priority = 140, path = "/generos*" }
+    "classes"        = { priority = 150, path = "/classes*" }
+    "cargos"         = { priority = 160, path = "/cargos*" }
   }
 }
 

@@ -517,9 +517,14 @@ configurar_backend_alb() {
         --targets "Id=$backend_id,Port=8080" > /dev/null
 
     local priority=10
+    # Tudo que não casar com esta lista vai para o target group do frontend, e o
+    # nginx devolve o index.html da SPA com status 200 — o axios não trata como
+    # erro e a tela quebra. Controller novo exige entrada nova aqui.
     for path in "/swagger-ui*" "/v3/api-docs*" "/auth*" "/usuarios*" "/documentos*" \
                 "/comorbidades*" "/diagnosticos*" "/fichas-medicas*" \
-                "/medicacoes*" "/medicamentos*"; do
+                "/medicacoes*" "/medicamentos*" \
+                "/pessoas*" "/ocorrencias*" "/unidades*" "/generos*" \
+                "/classes*" "/cargos*"; do
         aws elbv2 create-rule \
             --listener-arn "$ALB_LISTENER_ARN" \
             --conditions "[{\"Field\":\"path-pattern\",\"Values\":[\"$path\"]}]" \
