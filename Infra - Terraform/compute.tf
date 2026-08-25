@@ -20,6 +20,7 @@ data "aws_ami" "ubuntu" {
 locals {
   user_data_frontend = <<-EOF
     #!/bin/bash
+    until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
     apt-get update -y
     apt-get install -y docker.io nfs-common
 
