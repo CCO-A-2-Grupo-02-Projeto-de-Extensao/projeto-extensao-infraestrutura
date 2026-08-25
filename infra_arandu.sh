@@ -524,7 +524,7 @@ configurar_backend_alb() {
                 "/comorbidades*" "/diagnosticos*" "/fichas-medicas*" \
                 "/medicacoes*" "/medicamentos*" \
                 "/pessoas*" "/ocorrencias*" "/unidades*" "/generos*" \
-                "/classes*" "/cargos*"; do
+                "/classes*" "/cargos*" "/especialidades*" "/turmas*"; do
         aws elbv2 create-rule \
             --listener-arn "$ALB_LISTENER_ARN" \
             --conditions "[{\"Field\":\"path-pattern\",\"Values\":[\"$path\"]}]" \
