@@ -19,36 +19,36 @@ data "aws_ami" "ubuntu" {
 # User Data - Frontend (Monta EFS, copia assets e roda Nginx em Docker)
 locals {
   user_data_frontend = <<-EOF
-    #!/bin/bash
-    until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
-    apt-get update -y
-    apt-get install -y docker.io nfs-common
+#!/bin/bash
+until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
+apt-get update -y
+apt-get install -y docker.io nfs-common
 
-    EFS_DNS="${aws_efs_file_system.arandu.id}.efs.${var.aws_region}.amazonaws.com"
-    mkdir -p /mnt/efs
-    mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 "$EFS_DNS":/ /mnt/efs
-    echo "$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev 0 0" >> /etc/fstab
+EFS_DNS="${aws_efs_file_system.arandu.id}.efs.${var.aws_region}.amazonaws.com"
+mkdir -p /mnt/efs
+mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 "$EFS_DNS":/ /mnt/efs
+echo "$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev 0 0" >> /etc/fstab
 
-    systemctl start docker
-    systemctl enable docker
+systemctl start docker
+systemctl enable docker
 
-    mkdir -p /mnt/efs/frontend
-    if [ ! -f /mnt/efs/frontend/.deployed ]; then
-        docker pull ${var.frontend_docker_image}
-        docker run --rm -v /mnt/efs/frontend:/output ${var.frontend_docker_image} sh -c "cp -r /usr/share/nginx/html/. /output/"
-        touch /mnt/efs/frontend/.deployed
-    fi
+mkdir -p /mnt/efs/frontend
+if [ ! -f /mnt/efs/frontend/.deployed ]; then
+    docker pull ${var.frontend_docker_image}
+    docker run --rm -v /mnt/efs/frontend:/output ${var.frontend_docker_image} sh -c "cp -r /usr/share/nginx/html/. /output/"
+    touch /mnt/efs/frontend/.deployed
+fi
 
-    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
-    mkdir -p /home/ubuntu/.ssh
-    cat << 'SSHKEY' > /home/ubuntu/.ssh/arandu-key.pem
+mkdir -p /home/ubuntu/.ssh
+cat << 'SSHKEY' > /home/ubuntu/.ssh/arandu-key.pem
 ${tls_private_key.ssh.private_key_pem}
 SSHKEY
-    chmod 400 /home/ubuntu/.ssh/arandu-key.pem
-    chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
+chmod 400 /home/ubuntu/.ssh/arandu-key.pem
+chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 
-    docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${var.frontend_docker_image}
+docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${var.frontend_docker_image}
   EOF
 
     # User Data - Backend (Popula MySQL via SQL do Git e sobe container Java)
