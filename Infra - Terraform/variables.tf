@@ -186,5 +186,5 @@ variable "jwt_secret" {
 variable "use_lab_instance_profile" {
   description = "Se verdadeiro, reaproveita o LabInstanceProfile pre-existente da AWS Academy em vez de tentar criar roles IAM"
   type        = bool
-  default     = false
+  default     = true
 }
