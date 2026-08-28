@@ -115,6 +115,11 @@ locals {
     "generos"        = { priority = 140, path = "/generos*" }
     "classes"        = { priority = 150, path = "/classes*" }
     "cargos"         = { priority = 160, path = "/cargos*" }
+    "especialidades" = { priority = 170, path = "/especialidades*" }
+    "turmas"         = { priority = 180, path = "/turmas*" }
+    "chamadas"       = { priority = 190, path = "/chamadas*" }
+    "eventos"        = { priority = 200, path = "/eventos*" }
+    "presencas"      = { priority = 210, path = "/presencas*" }
   }
 }
 
