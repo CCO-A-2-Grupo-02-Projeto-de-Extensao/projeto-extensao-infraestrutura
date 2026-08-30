@@ -131,6 +131,32 @@ variable "efs_name" {
   default     = "efs-arandu"
 }
 
+variable "s3_member_tag" {
+  description = "Identificador unico por membro do grupo para evitar conflitos de nomes globais no S3"
+  type        = string
+  default     = "pedro"
+}
+
+# IMPORTANTE: CASO A GENTE DECIDA USAR NOMES FIXOS NOS BUCKETS, ALTERAR ABAIXO:
+
+variable "bucket_bronze_name" {
+  description = "Nome customizado para o bucket bronze (se omitido, sera gerado com s3_member_tag e account_id)"
+  type        = string
+  default     = null
+}
+
+variable "bucket_silver_name" {
+  description = "Nome customizado para o bucket silver (se omitido, sera gerado com s3_member_tag e account_id)"
+  type        = string
+  default     = null
+}
+
+variable "bucket_gold_name" {
+  description = "Nome customizado para o bucket gold (se omitido, sera gerado com s3_member_tag e account_id)"
+  type        = string
+  default     = null
+}
+
 # Banco de Dados (RDS MySQL)
 variable "rds_instance_id" {
   description = "Identificador da instancia RDS"

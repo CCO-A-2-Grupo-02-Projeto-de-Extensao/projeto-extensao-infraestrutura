@@ -41,6 +41,15 @@ TG_BACKEND_NAME="tg-arandu-backend"
 IAM_ROLE_NAME="arandu-backend-role"
 IAM_PROFILE_NAME="arandu-backend-profile"
 
+# S3 — Identificador e Buckets (Armazenamento e Arquitetura Medalhão)
+# O identificador do membro evita conflito de nomes globais no S3 entre integrantes do grupo.
+# Para customizar, execute por exemplo: S3_MEMBRO=outro_membro ./infra_arandu.sh
+S3_MEMBRO="${S3_MEMBRO:-"pedro"}"
+S3_BUCKET=""
+BUCKET_BRONZE=""
+BUCKET_SILVER=""
+BUCKET_GOLD=""
+
 # Subnets: name | cidr | az | public
 declare -A SUBNETS=(
     [frontend-1]="subnet-frontend-publica-arandu|10.0.1.0/24|us-east-1a|true"
@@ -228,38 +237,58 @@ associar_nacl() {
 # -----------------------------------------------------------------------------
 # S3
 # -----------------------------------------------------------------------------
-criar_s3() {
+definir_nomes_buckets() {
     local account_id
     account_id=$(aws sts get-caller-identity --query Account --output text)
-    local bucket="arandu-documentos-${account_id}"
+    S3_BUCKET="arandu-documentos-${account_id}"
+    BUCKET_BRONZE="arandu-bronze-${S3_MEMBRO}-${account_id}"
+    BUCKET_SILVER="arandu-silver-${S3_MEMBRO}-${account_id}"
+    BUCKET_GOLD="arandu-gold-${S3_MEMBRO}-${account_id}"
+}
 
+criar_bucket_s3() {
+    local bucket=$1
     if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
-        log "Bucket S3 já existe: $bucket" >&2
+        log "Bucket S3 já existe: $bucket"
     else
-        log "Criando bucket S3: $bucket" >&2
+        log "Criando bucket S3: $bucket"
         aws s3api create-bucket --bucket "$bucket" --region "$REGIAO" > /dev/null
         aws s3api put-public-access-block \
             --bucket "$bucket" \
             --public-access-block-configuration \
                 "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" > /dev/null
-        log "Bucket criado e bloqueio público aplicado." >&2
+        log "Bucket $bucket criado e bloqueio público aplicado."
     fi
-    echo "$bucket"
 }
 
-deletar_s3() {
-    log "Esvaziando e removendo bucket S3..."
-    local account_id
-    account_id=$(aws sts get-caller-identity --query Account --output text)
-    local bucket="arandu-documentos-${account_id}"
+criar_s3() {
+    definir_nomes_buckets
+    log "Provisionando buckets S3 (Documentos e Medalhão: Bronze, Silver, Gold)..."
+    criar_bucket_s3 "$S3_BUCKET"
+    criar_bucket_s3 "$BUCKET_BRONZE"
+    criar_bucket_s3 "$BUCKET_SILVER"
+    criar_bucket_s3 "$BUCKET_GOLD"
+}
 
+deletar_bucket_s3() {
+    local bucket=$1
     if aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+        log "Esvaziando e removendo bucket S3: $bucket..."
         safe_delete aws s3 rm "s3://$bucket" --recursive
         safe_delete aws s3api delete-bucket --bucket "$bucket"
         log "Bucket $bucket removido."
     else
         warn "Bucket S3 não encontrado: $bucket"
     fi
+}
+
+deletar_s3() {
+    log "Removendo buckets S3..."
+    definir_nomes_buckets
+    deletar_bucket_s3 "$S3_BUCKET"
+    deletar_bucket_s3 "$BUCKET_BRONZE"
+    deletar_bucket_s3 "$BUCKET_SILVER"
+    deletar_bucket_s3 "$BUCKET_GOLD"
 }
 
 # -----------------------------------------------------------------------------
@@ -1123,8 +1152,8 @@ criar_infraestrutura() {
     APP_DNS="$ALB_DNS"
     APP_URL="http://$APP_DNS"
 
-    log "Criando bucket S3..."
-    S3_BUCKET=$(criar_s3)
+    log "Criando buckets S3..."
+    criar_s3
 
     log "Obtendo instance profile IAM para o backend..."
     BACKEND_PROFILE=$(obter_instance_profile "$S3_BUCKET")
@@ -1153,7 +1182,10 @@ criar_infraestrutura() {
     log "EFS ID:             $EFS_ID"
     log "Frontend (EFS):     /mnt/efs/frontend  ← servido pelas 2 instâncias"
     log "Frontend imagem:    $FRONTEND_DOCKER_IMAGE"
-    log "S3 Bucket:          $S3_BUCKET"
+    log "S3 Documentos:      $S3_BUCKET"
+    log "S3 Bronze:          $BUCKET_BRONZE"
+    log "S3 Silver:          $BUCKET_SILVER"
+    log "S3 Gold:            $BUCKET_GOLD"
     log "RDS Endpoint:       $RDS_ENDPOINT"
     log "RDS Database:       $RDS_DB_NAME"
     log "RDS User:           $RDS_USERNAME"

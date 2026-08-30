@@ -30,6 +30,21 @@ output "s3_bucket_name" {
   value       = aws_s3_bucket.documentos.bucket
 }
 
+output "s3_bucket_bronze" {
+  description = "Nome do bucket S3 da camada Bronze"
+  value       = aws_s3_bucket.bronze.bucket
+}
+
+output "s3_bucket_silver" {
+  description = "Nome do bucket S3 da camada Silver"
+  value       = aws_s3_bucket.silver.bucket
+}
+
+output "s3_bucket_gold" {
+  description = "Nome do bucket S3 da camada Gold"
+  value       = aws_s3_bucket.gold.bucket
+}
+
 output "rds_endpoint" {
   description = "Endpoint de conexao com o banco MySQL RDS"
   value       = aws_db_instance.arandu.endpoint
