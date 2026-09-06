@@ -37,7 +37,7 @@ Este diretório contém a conversão completa e declarativa da infraestrutura AW
 | `vpc.tf` | VPC, Subnets, Internet Gateway, NAT Gateway, Tabelas de Rota e NACL |
 | `security_groups.tf` | Definição dos 5 Security Groups e suas regras de firewall |
 | `iam.tf` | Role e Instance Profile para o Backend acessar o S3 (compatível com AWS Academy) |
-| `s3.tf` | Bucket S3 para documentos com bloqueio público |
+| `s3.tf` | Buckets S3 (documentos + medalhão), criados via AWS CLI — ver *Restrições do AWS Academy* |
 | `efs.tf` | File system EFS e mount targets nas subnets públicas |
 | `key_pair.tf` | Geração do par de chaves SSH e exportação de `arandu-key.pem` |
 | `rds.tf` | Subnet group e instância RDS MySQL 8.0 |
@@ -100,4 +100,60 @@ ssh -i arandu-key.pem ubuntu@<IP_PUBLICO_FRONTEND>
 Para remover todos os recursos criados de forma limpa e automática:
 ```bash
 terraform destroy
+```
+
+---
+
+## ⚠️ Restrições do AWS Academy
+
+O ambiente do Learner Lab tem uma Service Control Policy que muda como esta
+infraestrutura precisa ser escrita. Vale ler antes de "corrigir" o `s3.tf`.
+
+### Por que os buckets não usam `aws_s3_bucket`
+
+A SCP nega explicitamente **`s3:GetBucketObjectLockConfiguration`**. Só essa
+chamada — `get-bucket-versioning`, `get-bucket-encryption` e `get-bucket-acl`
+funcionam normalmente.
+
+O provider AWS chama essa API toda vez que lê um recurso `aws_s3_bucket`, tanto
+depois de criar quanto no refresh. Como o deny é explícito em SCP, nenhuma
+política IAM o sobrepõe, e não há versão do provider que a dispense: o suporte a
+object lock existe desde a v2 e o comportamento é
+[issue aberto desde 2019](https://github.com/hashicorp/terraform-provider-aws/issues/7550).
+
+Na prática, com `aws_s3_bucket` no código:
+
+- o bucket **é criado**, mas a releitura falha com `AccessDenied` e o recurso
+  fica marcado como `tainted`;
+- tudo que depende dele é pulado — foi assim que a EC2 do backend deixou de
+  subir, por referenciar o bucket de documentos;
+- `terraform plan` e `terraform destroy` passam a falhar **sempre**, porque o
+  refresh relê o bucket.
+
+Por isso os 4 buckets são criados por `terraform_data` + `local-exec` chamando a
+AWS CLI, exatamente como o `infra_arandu.sh` já fazia. O `local-exec` usa
+`head-bucket || create-bucket`, então adota bucket existente em vez de recriar, e
+o provisioner de destroy esvazia o bucket antes de removê-lo.
+
+**Não troque isso de volta para `aws_s3_bucket`** sem antes confirmar que a SCP
+mudou:
+
+```bash
+aws s3api get-object-lock-configuration --bucket <nome-do-bucket>
+```
+
+### Se um apply falhar no meio
+
+O estado muda quando um apply falha parcialmente. Rode `terraform plan` **antes**
+do próximo apply: recurso que ficou `tainted` é destruído e recriado, e um
+`-refresh=false` sozinho não evita isso. Para limpar a marca sem recriar:
+
+```bash
+terraform untaint <endereco.do.recurso>
+```
+
+Para parar de gerenciar um recurso sem apagá-lo da AWS:
+
+```bash
+terraform state rm <endereco.do.recurso>
 ```
