@@ -35,8 +35,8 @@ resource "aws_iam_role_policy" "backend_s3" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.documentos.arn,
-          "${aws_s3_bucket.documentos.arn}/*"
+          local.bucket_documentos_arn,
+          "${local.bucket_documentos_arn}/*"
         ]
       }
     ]

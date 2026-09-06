@@ -73,7 +73,7 @@ docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="
       -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
       -e JWT_SECRET="${local.jwt_secret}" \
       -e APP_STORAGE_TYPE="s3" \
-      -e APP_STORAGE_S3_BUCKET="${aws_s3_bucket.documentos.bucket}" \
+      -e APP_STORAGE_S3_BUCKET="${local.bucket_documentos_name}" \
       -e APP_STORAGE_S3_REGION="${var.aws_region}" \
       ${var.backend_docker_image}
   EOF
