@@ -1,6 +1,3 @@
-# Computacao: AMIs, User Data e Instancias EC2 (Frontend e Backend)
-
-# Busca a AMI oficial mais recente do Ubuntu 22.04 
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = [var.ami_owner]
@@ -16,7 +13,6 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# User Data - Frontend (Monta EFS, copia assets e roda Nginx em Docker)
 locals {
   user_data_frontend = <<-EOF
 #!/bin/bash
@@ -51,37 +47,33 @@ chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${var.frontend_docker_image}
   EOF
 
-    # User Data - Backend (Popula MySQL via SQL do Git e sobe container Java)
-    user_data_backend = <<-EOF
-    #!/bin/bash
-    until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
-    apt-get update -y
-    apt-get install -y mysql-client curl docker.io
+  user_data_backend = <<-EOF
+#!/bin/bash
+until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
+apt-get update -y
+apt-get install -y mysql-client curl docker.io
 
-    until mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
+until mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
 
-    curl -4 -s "${var.sql_url}" -o /tmp/bdClubeDesbravadores.sql
-    mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" "${var.rds_db_name}" < /tmp/bdClubeDesbravadores.sql
-    rm -f /tmp/bdClubeDesbravadores.sql
+curl -4 -s "${var.sql_url}" -o /tmp/bdClubeDesbravadores.sql
+mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" "${var.rds_db_name}" < /tmp/bdClubeDesbravadores.sql
+rm -f /tmp/bdClubeDesbravadores.sql
 
-    systemctl start docker
-    systemctl enable docker
-    docker pull ${var.backend_docker_image}
-    docker run -d --name backend --restart unless-stopped -p 8080:8080 \
-      -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
-      -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
-      -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
-      -e JWT_SECRET="${local.jwt_secret}" \
-      -e APP_STORAGE_TYPE="s3" \
-      -e APP_STORAGE_S3_BUCKET="${aws_s3_bucket.documentos.bucket}" \
-      -e APP_STORAGE_S3_REGION="${var.aws_region}" \
-      ${var.backend_docker_image}
+systemctl start docker
+systemctl enable docker
+docker pull ${var.backend_docker_image}
+docker run -d --name backend --restart unless-stopped -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+  -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
+  -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
+  -e JWT_SECRET="${local.jwt_secret}" \
+  -e APP_STORAGE_TYPE="s3" \
+  -e APP_STORAGE_S3_BUCKET="${aws_s3_bucket.documentos.bucket}" \
+  -e APP_STORAGE_S3_REGION="${var.aws_region}" \
+  ${var.backend_docker_image}
   EOF
 }
 
-# Instancias EC2 Frontend (Zona A e Zona B)
-
-# Frontend 1 (Subnet Publica 1 - us-east-1a)
 resource "aws_instance" "frontend_1" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
@@ -103,7 +95,6 @@ resource "aws_instance" "frontend_1" {
   ]
 }
 
-# Frontend 2 (Subnet Publica 2 - us-east-1b)
 resource "aws_instance" "frontend_2" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
@@ -124,8 +115,6 @@ resource "aws_instance" "frontend_2" {
     aws_efs_mount_target.frontend_2
   ]
 }
-
-# Instancia EC2 Backend (Subnet Privada - us-east-1a)
 
 resource "aws_instance" "backend" {
   ami                  = data.aws_ami.ubuntu.id

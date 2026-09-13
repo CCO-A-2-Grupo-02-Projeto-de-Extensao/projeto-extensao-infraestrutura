@@ -1,12 +1,8 @@
-# Security Groups da Infraestrutura
-
-# 1. Security Group do Application Load Balancer
 resource "aws_security_group" "alb" {
   name        = "arandu-sg-alb"
   description = "SG Load Balancer Arandu"
   vpc_id      = aws_vpc.main.id
 
-  # HTTP publico vindo da internet
   ingress {
     description = "HTTP publico"
     from_port   = 80
@@ -28,13 +24,11 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# 2. Security Group das Instancias de Frontend (Nginx)
 resource "aws_security_group" "frontend" {
   name        = "arandu-sg-frontend"
   description = "SG Frontend Arandu"
   vpc_id      = aws_vpc.main.id
 
-  # SSH aberto para administracao
   ingress {
     description = "Acesso SSH"
     from_port   = 22
@@ -43,7 +37,6 @@ resource "aws_security_group" "frontend" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP apenas vindo do Load Balancer
   ingress {
     description     = "HTTP vindo do ALB"
     from_port       = 80
@@ -65,13 +58,11 @@ resource "aws_security_group" "frontend" {
   }
 }
 
-# 3. Security Group do EFS (Storage compartilhado)
 resource "aws_security_group" "efs" {
   name        = "arandu-sg-efs"
   description = "SG EFS Arandu"
   vpc_id      = aws_vpc.main.id
 
-  # NFS (porta 2049) aceito apenas dos frontends
   ingress {
     description     = "NFS vindo dos frontends"
     from_port       = 2049
@@ -93,13 +84,11 @@ resource "aws_security_group" "efs" {
   }
 }
 
-# 4. Security Group da Instancia de Backend (Spring Boot na rede privada)
 resource "aws_security_group" "backend" {
   name        = "arandu-sg-backend"
   description = "SG Backend Arandu"
   vpc_id      = aws_vpc.main.id
 
-  # API 8080 aceita do Frontend
   ingress {
     description     = "API vinda dos frontends"
     from_port       = 8080
@@ -108,7 +97,6 @@ resource "aws_security_group" "backend" {
     security_groups = [aws_security_group.frontend.id]
   }
 
-  # API 8080 aceita direto do ALB (para rotas de Swagger/API expostas no LB)
   ingress {
     description     = "API vinda diretamente do ALB"
     from_port       = 8080
@@ -117,7 +105,6 @@ resource "aws_security_group" "backend" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  # SSH apenas a partir do Frontend (usando frontend como bastion/jump host)
   ingress {
     description     = "SSH interno vindo do frontend"
     from_port       = 22
@@ -139,13 +126,11 @@ resource "aws_security_group" "backend" {
   }
 }
 
-# 5. Security Group do RDS (MySQL na rede privada)
 resource "aws_security_group" "db" {
   name        = "arandu-sg-db"
   description = "SG Database Arandu"
   vpc_id      = aws_vpc.main.id
 
-  # Conexao MySQL liberada exclusivamente para o Backend
   ingress {
     description     = "MySQL vindo do backend"
     from_port       = 3306

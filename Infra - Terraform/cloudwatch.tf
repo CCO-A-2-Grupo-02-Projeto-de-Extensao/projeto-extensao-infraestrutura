@@ -1,11 +1,8 @@
-# Observabilidade: Dashboard do CloudWatch (Metricas de EC2, ALB e RDS)
-
 resource "aws_cloudwatch_dashboard" "arandu" {
   dashboard_name = "Arandu-Dashboard"
 
   dashboard_body = jsonencode({
     widgets = [
-      # Cabecalho 
       {
         type   = "text"
         x      = 0
@@ -13,10 +10,9 @@ resource "aws_cloudwatch_dashboard" "arandu" {
         width  = 24
         height = 2
         properties = {
-          markdown = "# Arandu Digital — Monitoramento de Infraestrutura\nDashboard gerado via Terraform | Regiao: **${var.aws_region}**"
+          markdown = "# Arandu - Dashboard de Monitoramento\nRegiao: **${var.aws_region}**"
         }
       },
-      # CPU EC2
       {
         type   = "metric"
         x      = 0
@@ -24,7 +20,7 @@ resource "aws_cloudwatch_dashboard" "arandu" {
         width  = 12
         height = 6
         properties = {
-          title   = "CPU das Instancias EC2 (%)"
+          title   = "CPU EC2 (%)"
           view    = "timeSeries"
           stacked = false
           region  = var.aws_region
@@ -44,7 +40,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # Requisicoes e Saude ALB 
       {
         type   = "metric"
         x      = 12
@@ -58,8 +53,8 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           region  = var.aws_region
           period  = 60
           metrics = [
-            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.frontend.arn_suffix, { stat = "Sum", label = "Requisicoes (sum)", color = "#1f77b4" }],
-            [".", "HealthyHostCount", ".", aws_lb.frontend.arn_suffix, { stat = "Average", label = "Hosts saudaveis", color = "#2ca02c", yAxis = "right" }]
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.frontend.arn_suffix, { stat = "Sum", label = "Requisicoes", color = "#1f77b4" }],
+            [".", "HealthyHostCount", ".", aws_lb.frontend.arn_suffix, { stat = "Average", label = "Hosts Saudaveis", color = "#2ca02c", yAxis = "right" }]
           ]
           yAxis = {
             left  = { label = "Requisicoes", min = 0 }
@@ -67,7 +62,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # Erros 5xx ALB 
       {
         type   = "metric"
         x      = 0
@@ -94,7 +88,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # Erros 4xx ALB 
       {
         type   = "metric"
         x      = 8
@@ -116,7 +109,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # Latencia ALB 
       {
         type   = "metric"
         x      = 16
@@ -144,7 +136,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # RDS CPU e Conexoes 
       {
         type   = "metric"
         x      = 0
@@ -152,7 +143,7 @@ resource "aws_cloudwatch_dashboard" "arandu" {
         width  = 8
         height = 6
         properties = {
-          title   = "RDS — CPU e Conexoes"
+          title   = "RDS - CPU e Conexoes"
           view    = "timeSeries"
           stacked = false
           region  = var.aws_region
@@ -167,7 +158,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # RDS Armazenamento e Memoria 
       {
         type   = "metric"
         x      = 8
@@ -175,7 +165,7 @@ resource "aws_cloudwatch_dashboard" "arandu" {
         width  = 8
         height = 6
         properties = {
-          title   = "RDS — Storage e Memoria Livre"
+          title   = "RDS - Storage e Memoria Livre"
           view    = "timeSeries"
           stacked = false
           region  = var.aws_region
@@ -189,7 +179,6 @@ resource "aws_cloudwatch_dashboard" "arandu" {
           }
         }
       },
-      # RDS Latencia 
       {
         type   = "metric"
         x      = 16
@@ -197,7 +186,7 @@ resource "aws_cloudwatch_dashboard" "arandu" {
         width  = 8
         height = 6
         properties = {
-          title   = "RDS — Latencia de Leitura e Escrita"
+          title   = "RDS - Latencia"
           view    = "timeSeries"
           stacked = false
           region  = var.aws_region

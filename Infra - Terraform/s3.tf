@@ -1,12 +1,9 @@
-# S3: Armazenamento de Documentos da Aplicacao e Arquitetura Medalhao (Bronze, Silver, Gold)
-
 locals {
   bucket_bronze_name = var.bucket_bronze_name != null ? var.bucket_bronze_name : "arandu-bronze-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
   bucket_silver_name = var.bucket_silver_name != null ? var.bucket_silver_name : "arandu-silver-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
   bucket_gold_name   = var.bucket_gold_name != null ? var.bucket_gold_name : "arandu-gold-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
 }
 
-# Bucket exclusivo por conta AWS - Documentos
 resource "aws_s3_bucket" "documentos" {
   bucket        = "arandu-documentos-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
@@ -16,7 +13,6 @@ resource "aws_s3_bucket" "documentos" {
   }
 }
 
-# Bloqueio total de acesso publico direto ao bucket de documentos
 resource "aws_s3_bucket_public_access_block" "documentos" {
   bucket = aws_s3_bucket.documentos.id
 
@@ -26,9 +22,6 @@ resource "aws_s3_bucket_public_access_block" "documentos" {
   restrict_public_buckets = true
 }
 
-# Buckets da Arquitetura Medalhao
-
-# Bucket Bronze
 resource "aws_s3_bucket" "bronze" {
   bucket        = local.bucket_bronze_name
   force_destroy = true
@@ -48,7 +41,6 @@ resource "aws_s3_bucket_public_access_block" "bronze" {
   restrict_public_buckets = true
 }
 
-# Bucket Silver
 resource "aws_s3_bucket" "silver" {
   bucket        = local.bucket_silver_name
   force_destroy = true
@@ -68,7 +60,6 @@ resource "aws_s3_bucket_public_access_block" "silver" {
   restrict_public_buckets = true
 }
 
-# Bucket Gold
 resource "aws_s3_bucket" "gold" {
   bucket        = local.bucket_gold_name
   force_destroy = true

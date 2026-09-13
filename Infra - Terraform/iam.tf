@@ -1,6 +1,3 @@
-# IAM: Permissoes para a instancia EC2 de Backend acessar o S3
-
-# Role EC2 para o backend (criada apenas se nao estivermos usando LabInstanceProfile da AWS Academy)
 resource "aws_iam_role" "backend" {
   count = var.use_lab_instance_profile ? 0 : 1
   name  = "arandu-backend-role"
@@ -17,7 +14,6 @@ resource "aws_iam_role" "backend" {
   })
 }
 
-# Politica de permissao para manipulacao de documentos no bucket S3
 resource "aws_iam_role_policy" "backend_s3" {
   count = var.use_lab_instance_profile ? 0 : 1
   name  = "arandu-s3-policy"
@@ -43,7 +39,6 @@ resource "aws_iam_role_policy" "backend_s3" {
   })
 }
 
-# Instance Profile associado a role
 resource "aws_iam_instance_profile" "backend" {
   count = var.use_lab_instance_profile ? 0 : 1
   name  = "arandu-backend-profile"
@@ -51,6 +46,5 @@ resource "aws_iam_instance_profile" "backend" {
 }
 
 locals {
-  # Permite alternar perfeitamente entre conta pessoal e ambiente restrito Academy
   backend_iam_profile_name = var.use_lab_instance_profile ? "LabInstanceProfile" : aws_iam_instance_profile.backend[0].name
 }

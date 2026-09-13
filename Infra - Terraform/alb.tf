@@ -1,6 +1,3 @@
-# Balanceador de Carga: Application Load Balancer, Target Groups e Rotas
-
-# Application Load Balancer publico
 resource "aws_lb" "frontend" {
   name               = var.alb_name
   internal           = false
@@ -16,7 +13,6 @@ resource "aws_lb" "frontend" {
   }
 }
 
-# Target Group Frontend (Porta 80)
 resource "aws_lb_target_group" "frontend" {
   name        = var.tg_frontend_name
   port        = 80
@@ -36,7 +32,6 @@ resource "aws_lb_target_group" "frontend" {
   }
 }
 
-# Registro das duas instancias EC2 de Frontend no Target Group
 resource "aws_lb_target_group_attachment" "frontend_1" {
   target_group_arn = aws_lb_target_group.frontend.arn
   target_id        = aws_instance.frontend_1.id
@@ -48,8 +43,6 @@ resource "aws_lb_target_group_attachment" "frontend_2" {
   target_id        = aws_instance.frontend_2.id
   port             = 80
 }
-
-# Target Group Backend (Porta 8080)
 
 resource "aws_lb_target_group" "backend" {
   name        = var.tg_backend_name
@@ -73,16 +66,11 @@ resource "aws_lb_target_group" "backend" {
   }
 }
 
-# Registro da instancia de backend no Target Group
-
 resource "aws_lb_target_group_attachment" "backend" {
   target_group_arn = aws_lb_target_group.backend.arn
   target_id        = aws_instance.backend.id
   port             = 8080
 }
-
-# Listener HTTP (Porta 80) e Regras de Roteamento
-# Listener padrao: direciona todo trafego default para os Frontends
 
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.frontend.arn
@@ -94,8 +82,6 @@ resource "aws_lb_listener" "http" {
     target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
-
-# Regras especificas de path para rotear APIs e Swagger direto ao Backend
 
 locals {
   backend_routes = {

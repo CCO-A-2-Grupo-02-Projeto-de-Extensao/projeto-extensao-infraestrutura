@@ -1,6 +1,3 @@
-# Rede: VPC, Subnets, Gateways, Tabelas de Rota e NACL
-
-# VPC principal
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -11,7 +8,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Subnets publicas e privadas definidas no mapa
 resource "aws_subnet" "subnets" {
   for_each = var.subnets_config
 
@@ -24,8 +20,6 @@ resource "aws_subnet" "subnets" {
     Name = each.value.name
   }
 }
-
-# Internet Gateway e Roteamento Publico
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
@@ -48,7 +42,6 @@ resource "aws_route_table" "public" {
   }
 }
 
-# Associa as subnets de frontend a tabela publica
 resource "aws_route_table_association" "public" {
   for_each = toset(["frontend_1", "frontend_2"])
 
@@ -56,9 +49,6 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# NAT Gateway e Roteamento Privado
-
-# IP elastico dedicado para saida de internet da rede privada
 resource "aws_eip" "nat" {
   domain     = "vpc"
   depends_on = [aws_internet_gateway.igw]
@@ -68,7 +58,6 @@ resource "aws_eip" "nat" {
   }
 }
 
-# NAT Gateway colocado na subnet publica 1
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.subnets["frontend_1"].id
@@ -93,15 +82,12 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Associa backend e bancos a tabela de rotas privadas (com saida pelo NAT)
 resource "aws_route_table_association" "private" {
   for_each = toset(["backend", "db_1", "db_2"])
 
   subnet_id      = aws_subnet.subnets[each.key].id
   route_table_id = aws_route_table.private.id
 }
-
-# NACL (Network Access Control List) para as subnets publicas
 
 resource "aws_network_acl" "public" {
   vpc_id = aws_vpc.main.id
@@ -111,7 +97,6 @@ resource "aws_network_acl" "public" {
     aws_subnet.subnets["frontend_2"].id
   ]
 
-  # Regras de Ingress (Entrada)
   ingress {
     rule_no    = 100
     protocol   = "tcp"
@@ -157,7 +142,6 @@ resource "aws_network_acl" "public" {
     to_port    = 65535
   }
 
-  # Regra de Egress (Saida - Todo trafego liberado)
   egress {
     rule_no    = 100
     protocol   = "-1"

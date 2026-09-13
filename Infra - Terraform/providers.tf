@@ -33,5 +33,4 @@ provider "aws" {
   }
 }
 
-# Dados da conta atual para montar nomes unicos (ex: bucket S3)
 data "aws_caller_identity" "current" {}
