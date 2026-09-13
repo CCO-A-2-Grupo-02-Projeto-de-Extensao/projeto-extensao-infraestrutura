@@ -59,18 +59,18 @@ curl -4 -s "${var.sql_url}" -o /tmp/bdClubeDesbravadores.sql
 mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" "${var.rds_db_name}" < /tmp/bdClubeDesbravadores.sql
 rm -f /tmp/bdClubeDesbravadores.sql
 
-systemctl start docker
-systemctl enable docker
-docker pull ${var.backend_docker_image}
-docker run -d --name backend --restart unless-stopped -p 8080:8080 \
-  -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
-  -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
-  -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
-  -e JWT_SECRET="${local.jwt_secret}" \
-  -e APP_STORAGE_TYPE="s3" \
-  -e APP_STORAGE_S3_BUCKET="${aws_s3_bucket.documentos.bucket}" \
-  -e APP_STORAGE_S3_REGION="${var.aws_region}" \
-  ${var.backend_docker_image}
+    systemctl start docker
+    systemctl enable docker
+    docker pull ${var.backend_docker_image}
+    docker run -d --name backend --restart unless-stopped -p 8080:8080 \
+      -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+      -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
+      -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
+      -e JWT_SECRET="${local.jwt_secret}" \
+      -e APP_STORAGE_TYPE="s3" \
+      -e APP_STORAGE_S3_BUCKET="${local.bucket_documentos_name}" \
+      -e APP_STORAGE_S3_REGION="${var.aws_region}" \
+      ${var.backend_docker_image}
   EOF
 }
 

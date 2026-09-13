@@ -19,19 +19,23 @@ output "efs_id" {
 }
 
 output "s3_bucket_name" {
-  value = aws_s3_bucket.documentos.bucket
+  description = "Nome do bucket S3 criado para upload de documentos"
+  value       = local.bucket_documentos_name
 }
 
 output "s3_bucket_bronze" {
-  value = aws_s3_bucket.bronze.bucket
+  description = "Nome do bucket S3 da camada Bronze"
+  value       = local.bucket_bronze_name
 }
 
 output "s3_bucket_silver" {
-  value = aws_s3_bucket.silver.bucket
+  description = "Nome do bucket S3 da camada Silver"
+  value       = local.bucket_silver_name
 }
 
 output "s3_bucket_gold" {
-  value = aws_s3_bucket.gold.bucket
+  description = "Nome do bucket S3 da camada Gold"
+  value       = local.bucket_gold_name
 }
 
 output "rds_endpoint" {

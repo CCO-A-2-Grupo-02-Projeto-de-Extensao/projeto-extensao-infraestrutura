@@ -1,80 +1,51 @@
+# S3: Armazenamento de Documentos da Aplicacao e Arquitetura Medalhao (Bronze, Silver, Gold)
+#
+# Os buckets sao criados via AWS CLI, e nao com o recurso aws_s3_bucket, porque a
+# Service Control Policy do AWS Academy nega s3:GetBucketObjectLockConfiguration.
+# O provider chama essa API toda vez que le um aws_s3_bucket, entao qualquer plan
+# ou apply falharia com AccessDenied mesmo tendo criado o bucket com sucesso.
+
 locals {
-  bucket_bronze_name = var.bucket_bronze_name != null ? var.bucket_bronze_name : "arandu-bronze-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
-  bucket_silver_name = var.bucket_silver_name != null ? var.bucket_silver_name : "arandu-silver-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
-  bucket_gold_name   = var.bucket_gold_name != null ? var.bucket_gold_name : "arandu-gold-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
-}
+  bucket_documentos_name = "arandu-documentos-${data.aws_caller_identity.current.account_id}"
+  bucket_bronze_name     = var.bucket_bronze_name != null ? var.bucket_bronze_name : "arandu-bronze-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
+  bucket_silver_name     = var.bucket_silver_name != null ? var.bucket_silver_name : "arandu-silver-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
+  bucket_gold_name       = var.bucket_gold_name != null ? var.bucket_gold_name : "arandu-gold-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
+  bucket_documentos_arn  = "arn:aws:s3:::${local.bucket_documentos_name}"
 
-resource "aws_s3_bucket" "documentos" {
-  bucket        = "arandu-documentos-${data.aws_caller_identity.current.account_id}"
-  force_destroy = true
-
-  tags = {
-    Name = "arandu-documentos"
+  buckets = {
+    documentos = local.bucket_documentos_name
+    bronze     = local.bucket_bronze_name
+    silver     = local.bucket_silver_name
+    gold       = local.bucket_gold_name
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "documentos" {
-  bucket = aws_s3_bucket.documentos.id
+resource "terraform_data" "buckets" {
+  for_each = local.buckets
 
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
+  input = each.value
 
-resource "aws_s3_bucket" "bronze" {
-  bucket        = local.bucket_bronze_name
-  force_destroy = true
-
-  tags = {
-    Name  = "arandu-bronze"
-    Layer = "bronze"
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      aws s3api head-bucket --bucket "${each.value}" 2>/dev/null \
+        || aws s3api create-bucket --bucket "${each.value}" --region ${var.aws_region}
+      aws s3api put-public-access-block \
+        --bucket "${each.value}" \
+        --public-access-block-configuration \
+          BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+      aws s3api put-bucket-tagging \
+        --bucket "${each.value}" \
+        --tagging 'TagSet=[{Key=Name,Value=arandu-${each.key}},{Key=Projeto,Value=Arandu},{Key=GerenciadoPor,Value=Terraform}]'
+    EOT
   }
-}
 
-resource "aws_s3_bucket_public_access_block" "bronze" {
-  bucket = aws_s3_bucket.bronze.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket" "silver" {
-  bucket        = local.bucket_silver_name
-  force_destroy = true
-
-  tags = {
-    Name  = "arandu-silver"
-    Layer = "silver"
+  provisioner "local-exec" {
+    when       = destroy
+    on_failure = continue
+    command    = <<-EOT
+      aws s3 rm "s3://${self.input}" --recursive
+      aws s3api delete-bucket --bucket "${self.input}"
+    EOT
   }
-}
-
-resource "aws_s3_bucket_public_access_block" "silver" {
-  bucket = aws_s3_bucket.silver.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_s3_bucket" "gold" {
-  bucket        = local.bucket_gold_name
-  force_destroy = true
-
-  tags = {
-    Name  = "arandu-gold"
-    Layer = "gold"
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "gold" {
-  bucket = aws_s3_bucket.gold.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
 }
