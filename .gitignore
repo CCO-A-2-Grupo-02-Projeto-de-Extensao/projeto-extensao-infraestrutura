@@ -21,3 +21,8 @@ terraform.rc
 
 # LocalStack
 .localstack
+
+# Artifacts gerados pelo empacotamento das Lambdas
+Infra - Terraform/build/
+Infra - Terraform/**/__pycache__/
+Infra - Terraform/**/*.py[cod]

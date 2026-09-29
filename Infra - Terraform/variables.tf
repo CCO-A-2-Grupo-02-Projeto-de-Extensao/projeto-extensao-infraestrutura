@@ -203,3 +203,21 @@ variable "use_lab_instance_profile" {
   type        = bool
   default     = true
 }
+
+variable "lambda_execution_role_name" {
+  description = "Role existente usada pelas Lambdas (LabRole no AWS Academy)"
+  type        = string
+  default     = "LabRole"
+}
+
+variable "lambda_build_python" {
+  description = "Executavel Python usado pelo Terraform para montar a layer"
+  type        = string
+  default     = "python"
+}
+
+variable "inmet_start_year" {
+  description = "Primeiro ano de arquivos historicos do INMET a ingerir"
+  type        = number
+  default     = 2023
+}
