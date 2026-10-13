@@ -85,27 +85,28 @@ resource "aws_lb_listener" "http" {
 
 locals {
   backend_routes = {
-    "swagger_ui"     = { priority = 10,  path = "/swagger-ui*" }
-    "api_docs"       = { priority = 20,  path = "/v3/api-docs*" }
-    "auth"           = { priority = 30,  path = "/auth*" }
-    "usuarios"       = { priority = 40,  path = "/usuarios*" }
-    "documentos"     = { priority = 50,  path = "/documentos*" }
-    "comorbidades"   = { priority = 60,  path = "/comorbidades*" }
-    "diagnosticos"   = { priority = 70,  path = "/diagnosticos*" }
-    "fichas_medicas" = { priority = 80,  path = "/fichas-medicas*" }
-    "medicacoes"     = { priority = 90,  path = "/medicacoes*" }
-    "medicamentos"   = { priority = 100, path = "/medicamentos*" }
-    "pessoas"        = { priority = 110, path = "/pessoas*" }
-    "ocorrencias"    = { priority = 120, path = "/ocorrencias*" }
-    "unidades"       = { priority = 130, path = "/unidades*" }
-    "generos"        = { priority = 140, path = "/generos*" }
-    "classes"        = { priority = 150, path = "/classes*" }
-    "cargos"         = { priority = 160, path = "/cargos*" }
-    "especialidades" = { priority = 170, path = "/especialidades*" }
-    "turmas"         = { priority = 180, path = "/turmas*" }
-    "chamadas"       = { priority = 190, path = "/chamadas*" }
-    "eventos"        = { priority = 200, path = "/eventos*" }
-    "presencas"      = { priority = 210, path = "/presencas*" }
+    "swagger_ui"           = { priority = 10, path = "/swagger-ui*" }
+    "api_docs"             = { priority = 20, path = "/v3/api-docs*" }
+    "auth"                 = { priority = 30, path = "/auth*" }
+    "usuarios"             = { priority = 40, path = "/usuarios*" }
+    "documentos"           = { priority = 50, path = "/documentos*" }
+    "comorbidades"         = { priority = 60, path = "/comorbidades*" }
+    "diagnosticos"         = { priority = 70, path = "/diagnosticos*" }
+    "fichas_medicas"       = { priority = 80, path = "/fichas-medicas*" }
+    "medicacoes"           = { priority = 90, path = "/medicacoes*" }
+    "medicamentos"         = { priority = 100, path = "/medicamentos*" }
+    "pessoas"              = { priority = 110, path = "/pessoas*" }
+    "ocorrencias"          = { priority = 120, path = "/ocorrencias*" }
+    "unidades"             = { priority = 130, path = "/unidades*" }
+    "generos"              = { priority = 140, path = "/generos*" }
+    "classes"              = { priority = 150, path = "/classes*" }
+    "cargos"               = { priority = 160, path = "/cargos*" }
+    "especialidades"       = { priority = 170, path = "/especialidades*" }
+    "turmas"               = { priority = 180, path = "/turmas*" }
+    "chamadas"             = { priority = 190, path = "/chamadas*" }
+    "eventos"              = { priority = 200, path = "/eventos*" }
+    "presencas"            = { priority = 210, path = "/presencas*" }
+    "historicos_escolares" = { priority = 220, path = "/historicos-escolares*" }
   }
 }
 
