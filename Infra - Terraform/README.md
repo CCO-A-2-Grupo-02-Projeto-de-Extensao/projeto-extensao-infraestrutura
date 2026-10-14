@@ -30,12 +30,20 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 | `compute.tf` | Lookup de AMI Ubuntu, user data scripts e instâncias EC2 |
 | `alb.tf` | ALB, Target Groups de Frontend e Backend, Listeners e regras de path |
 | `cloudwatch.tf` | Dashboard de métricas unificado no CloudWatch |
+| `lambda.tf` | Ingestão Bronze, transformação Silver, IAM, agendas e triggers |
+| `lambda_src/` | Handlers Python das funções Lambda |
+| `lambda-requirements.txt` | Dependências empacotadas na Lambda Layer |
 | `outputs.tf` | URLs de acesso, DNS do ALB, Swagger, IPs e comandos SSH |
 | `terraform.tfvars.example` | Exemplo de sobrescrita de variáveis |
 
 ## Como Executar
 
 1. Configurar as credenciais da AWS no terminal (`aws configure` ou variaveis de ambiente).
+
+  No AWS Academy, a role existente `LabRole` é usada pelas funções. A role precisa permitir
+  operações S3 nos buckets Bronze/Silver, DynamoDB para o lock do manifesto e escrita de logs
+  CloudWatch; o Terraform adiciona uma política inline à `LabRole`. Se a conta limitar essa
+  alteração, ajuste `lambda_execution_role_name` para uma role que possa receber a política.
 
 2. Inicializar o Terraform:
 ```bash
@@ -51,6 +59,27 @@ terraform plan
 ```bash
 terraform apply
 ```
+
+O Terraform empacota o código Python e instala `xlrd` na layer usando o executável configurado em
+`lambda_build_python` (padrão `python`). Em ambientes Windows, informe o caminho do Python com
+`-var='lambda_build_python=C:/Python312/python.exe'` se `python` não estiver no PATH.
+
+As Lambdas de ingestão são agendadas mensalmente para INMET e ANBIMA e semanalmente para
+MusicBrainz. A Silver roda por notificação `s3:ObjectCreated` nos prefixes `clima/`, `eventos/` e
+`feriados/`. Os objetos originais e `manifesto.csv` ficam no bucket Bronze; as saídas são
+`clima_horario.csv.gz`, `eventos_cidade.csv.gz` e `feriados_nacionais.csv.gz` no bucket Silver.
+Os logs ficam em `/aws/lambda/arandu-fatores-*` no CloudWatch, com retenção de 14 dias.
+
+O dump MusicBrainz é baixado em streaming multipart para o S3, sem arquivo local. A Silver também
+faz leitura sequencial do tar.xz e registra duração e pico de RSS nos logs. Seu timeout e memória
+estão nos limites máximos da Lambda (900 segundos e 10.240 MB); valide uma execução completa do
+dump na conta AWS. Se atingir timeout/memória, a próxima etapa é particionar/pré-filtrar fora da
+Lambda, por exemplo com ECS/Fargate ou AWS Batch. O runtime AWS ainda não foi medido com o dump real.
+
+Como referência, o dump `20260926-001002/event.tar.xz` (49.483.012 bytes) foi processado no host
+Windows em 4,51 s, gerando 235 linhas para São Paulo; a amostragem do processo apontou pico de RSS
+de 45,07 MiB. A transferência HTTP levou 41,28 s. Esses números locais não substituem o primeiro
+teste na Lambda: confirme duração e `Max Memory Used` no registro `REPORT` do CloudWatch.
 
 ## Acessos
 
