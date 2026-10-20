@@ -70,6 +70,10 @@ resource "aws_dynamodb_table" "manifest_lock" {
 }
 
 resource "aws_iam_role_policy" "factors_lambdas" {
+  # No AWS Academy a conta nega iam:PutRolePolicy e a LabRole ja tem esses
+  # acessos pelas VocLabPolicy, entao a politica so e criada sob demanda.
+  count = var.manage_lambda_role_policy ? 1 : 0
+
   name = "arandu-fatores-lambda-access"
   role = data.aws_iam_role.lambda_execution.name
 

@@ -221,3 +221,14 @@ variable "inmet_start_year" {
   type        = number
   default     = 2023
 }
+
+variable "manage_lambda_role_policy" {
+  description = <<-DESC
+    Anexar a politica inline de acesso (S3/DynamoDB/Logs) a role das Lambdas.
+    No AWS Academy a conta nega iam:PutRolePolicy e a LabRole ja carrega essas
+    permissoes pelas VocLabPolicy, entao o padrao e false. Ative numa conta
+    propria, onde a role dedicada precisa receber a politica.
+  DESC
+  type        = bool
+  default     = false
+}

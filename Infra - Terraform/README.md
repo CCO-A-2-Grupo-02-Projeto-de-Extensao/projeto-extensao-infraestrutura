@@ -31,6 +31,7 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 | `alb.tf` | ALB, Target Groups de Frontend e Backend, Listeners e regras de path |
 | `cloudwatch.tf` | Dashboard de métricas unificado no CloudWatch |
 | `lambda.tf` | Ingestão Bronze, transformação Silver, IAM, agendas e triggers |
+| `tests/` | Testes unitários das transformações Silver (`pytest`) |
 | `lambda_src/` | Handlers Python das funções Lambda |
 | `lambda-requirements.txt` | Dependências empacotadas na Lambda Layer |
 | `outputs.tf` | URLs de acesso, DNS do ALB, Swagger, IPs e comandos SSH |
@@ -42,8 +43,19 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 
   No AWS Academy, a role existente `LabRole` é usada pelas funções. A role precisa permitir
   operações S3 nos buckets Bronze/Silver, DynamoDB para o lock do manifesto e escrita de logs
-  CloudWatch; o Terraform adiciona uma política inline à `LabRole`. Se a conta limitar essa
-  alteração, ajuste `lambda_execution_role_name` para uma role que possa receber a política.
+  CloudWatch — a `LabRole` já cobre isso pelas `VocLabPolicy` anexadas a ela.
+
+  A conta do Learner Lab **nega `iam:PutRolePolicy`**, então a política inline
+  `arandu-fatores-lambda-access` não é criada por padrão (`manage_lambda_role_policy = false`).
+  Com ela ligada, o apply falha com `AccessDenied` ao anexar a política e leva junto as 4 Lambdas,
+  os log groups, as regras do EventBridge e a notificação do S3, que dependem dela.
+
+  Numa conta própria, onde `lambda_execution_role_name` aponta para uma role dedicada que ainda
+  não tem esses acessos, ative a política:
+
+```bash
+terraform apply -var='manage_lambda_role_policy=true'
+```
 
 2. Inicializar o Terraform:
 ```bash
