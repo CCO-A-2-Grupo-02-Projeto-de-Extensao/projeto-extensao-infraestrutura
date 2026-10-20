@@ -167,9 +167,11 @@ def _append_manifest(s3, dynamodb, bucket, table_name, record):
             ContentType="text/csv; charset=utf-8",
         )
     finally:
+        # "owner" e palavra reservada no DynamoDB: precisa de alias no expression.
         table.delete_item(
             Key={"lock_id": lock_id},
-            ConditionExpression="owner = :owner",
+            ConditionExpression="#owner = :owner",
+            ExpressionAttributeNames={"#owner": "owner"},
             ExpressionAttributeValues={":owner": owner},
         )
 
