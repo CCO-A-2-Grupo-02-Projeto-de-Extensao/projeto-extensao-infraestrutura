@@ -7,14 +7,22 @@ locals {
     inmet = {
       handler  = "ingestion.inmet_handler"
       schedule = "cron(0 6 1 * ? *)"
+      banco    = false
     }
     musicbrainz = {
       handler  = "ingestion.musicbrainz_handler"
       schedule = "cron(0 7 ? * MON *)"
+      banco    = false
     }
     anbima = {
       handler  = "ingestion.anbima_handler"
       schedule = "cron(0 8 1 * ? *)"
+      banco    = false
+    }
+    chamadas = {
+      handler  = "ingestion.chamadas_handler"
+      schedule = "cron(0 9 ? * SUN *)"
+      banco    = true
     }
   }
 
@@ -47,7 +55,7 @@ data "archive_file" "lambda_layer" {
 
 resource "aws_lambda_layer_version" "xlrd" {
   layer_name          = "arandu-fatores-xlrd"
-  description         = "Leitor de planilhas XLS para a ingestao ANBIMA"
+  description         = "Dependencias Python das Lambdas: xlrd e pymysql"
   filename            = data.archive_file.lambda_layer.output_path
   source_code_hash    = data.archive_file.lambda_layer.output_base64sha256
   compatible_runtimes = ["python3.12"]
@@ -102,6 +110,18 @@ resource "aws_iam_role_policy" "factors_lambdas" {
         Resource = [aws_dynamodb_table.manifest_lock.arn]
       },
       {
+        Sid    = "LambdaVpcNetworkInterfaces"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses"
+        ]
+        Resource = "*"
+      },
+      {
         Sid      = "CreateLambdaLogGroups"
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup"]
@@ -137,12 +157,28 @@ resource "aws_lambda_function" "ingestion" {
     size = 10240
   }
 
-  environment {
-    variables = {
-      BRONZE_BUCKET       = local.bucket_bronze_name
-      MANIFEST_LOCK_TABLE = aws_dynamodb_table.manifest_lock.name
-      INMET_START_YEAR    = tostring(var.inmet_start_year)
+  dynamic "vpc_config" {
+    for_each = each.value.banco ? [1] : []
+    content {
+      subnet_ids         = [aws_subnet.subnets["backend"].id]
+      security_group_ids = [aws_security_group.lambda_banco.id]
     }
+  }
+
+  environment {
+    variables = merge(
+      {
+        BRONZE_BUCKET       = local.bucket_bronze_name
+        MANIFEST_LOCK_TABLE = aws_dynamodb_table.manifest_lock.name
+        INMET_START_YEAR    = tostring(var.inmet_start_year)
+      },
+      each.value.banco ? {
+        DB_HOST     = aws_db_instance.arandu.address
+        DB_NAME     = var.rds_db_name
+        DB_USER     = var.rds_username
+        DB_PASSWORD = local.rds_password
+      } : {}
+    )
   }
 
   depends_on = [aws_iam_role_policy.factors_lambdas]
@@ -224,7 +260,7 @@ resource "aws_s3_bucket_notification" "bronze" {
   bucket = local.bucket_bronze_name
 
   dynamic "lambda_function" {
-    for_each = toset(["clima/", "eventos/", "feriados/"])
+    for_each = toset(["clima/", "eventos/", "feriados/", "chamadas/"])
     content {
       lambda_function_arn = aws_lambda_function.silver.arn
       events              = ["s3:ObjectCreated:*"]

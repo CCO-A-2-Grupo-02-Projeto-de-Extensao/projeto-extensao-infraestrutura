@@ -18,6 +18,12 @@ LOGGER.setLevel(logging.INFO)
 USER_AGENT = "Arandu-FatoresExternos/1.0 (data ingestion)"
 PART_SIZE = 8 * 1024 * 1024
 MANIFEST_FIELDS = ("fonte", "data_coleta", "tamanho_bytes", "url", "arquivo_s3")
+CHAMADAS_FIELDS = ("id_chamada", "data_chamada", "presenca")
+CHAMADAS_QUERY = (
+    "SELECT c.idChamada, c.data_chamada, p.presenca "
+    "FROM presenca p JOIN chamada c ON c.idChamada = p.Chamada_idChamada "
+    "ORDER BY c.data_chamada, c.idChamada"
+)
 
 
 def _boto3():
@@ -244,3 +250,60 @@ def anbima_handler(event, context):
     key = f"feriados/feriados_nacionais_{_version_token(metadata)}.xls"
     _ingest(s3, dynamodb, bucket, lock_table, "ANBIMA", url, key, referer)
     return {"statusCode": 200}
+
+
+def _chamadas_csv(rows):
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(CHAMADAS_FIELDS)
+    for id_chamada, data_chamada, presenca in rows:
+        writer.writerow((id_chamada, data_chamada.isoformat(), int(bool(presenca))))
+    return output.getvalue().encode("utf-8")
+
+
+def chamadas_handler(event, context):
+    import pymysql
+
+    boto3 = _boto3()
+    s3 = boto3.client("s3")
+    dynamodb = boto3.resource("dynamodb")
+    bucket = os.environ["BRONZE_BUCKET"]
+    lock_table = os.environ["MANIFEST_LOCK_TABLE"]
+    host = os.environ["DB_HOST"]
+    database = os.environ["DB_NAME"]
+    connection = pymysql.connect(
+        host=host,
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
+        database=database,
+        connect_timeout=30,
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(CHAMADAS_QUERY)
+            rows = cursor.fetchall()
+    finally:
+        connection.close()
+
+    body = _chamadas_csv(rows)
+    key = f"chamadas/presencas_{hashlib.sha256(body).hexdigest()[:16]}.csv"
+    if not _object_exists(s3, bucket, key):
+        s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/csv; charset=utf-8")
+        LOGGER.info("bronze_exported source=chamadas key=%s rows=%d", key, len(rows))
+    else:
+        LOGGER.info("bronze_exists source=chamadas key=%s rows=%d", key, len(rows))
+
+    _append_manifest(
+        s3,
+        dynamodb,
+        bucket,
+        lock_table,
+        {
+            "fonte": "Arandu Digital",
+            "data_coleta": datetime.now(timezone.utc).isoformat(),
+            "tamanho_bytes": len(body),
+            "url": f"mysql://{host}/{database}",
+            "arquivo_s3": key,
+        },
+    )
+    return {"statusCode": 200, "rows": len(rows)}

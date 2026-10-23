@@ -126,6 +126,24 @@ resource "aws_security_group" "backend" {
   }
 }
 
+resource "aws_security_group" "lambda_banco" {
+  name        = "arandu-sg-lambda-banco"
+  description = "SG das Lambdas que leem o RDS Arandu"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    description = "Trafego de saida liberado"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "arandu-sg-lambda-banco"
+  }
+}
+
 resource "aws_security_group" "db" {
   name        = "arandu-sg-db"
   description = "SG Database Arandu"
@@ -137,6 +155,14 @@ resource "aws_security_group" "db" {
     to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.backend.id]
+  }
+
+  ingress {
+    description     = "MySQL vindo das Lambdas"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda_banco.id]
   }
 
   ingress {

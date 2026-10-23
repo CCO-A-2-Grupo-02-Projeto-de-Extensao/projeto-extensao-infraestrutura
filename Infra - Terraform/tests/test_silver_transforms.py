@@ -9,7 +9,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lambda_src"))
 
-from silver import _event_rows, _events_rows, _inmet_timestamp, _parse_measurement, _write_gzip
+from ingestion import _chamadas_csv
+from silver import (
+    _chamadas_rows,
+    _event_rows,
+    _events_rows,
+    _inmet_timestamp,
+    _parse_measurement,
+    _write_gzip,
+)
 
 
 class MemoryS3:
@@ -109,6 +117,28 @@ class SilverTransformTests(unittest.TestCase):
         output = gzip.decompress(s3.upload["Body"]).decode()
         self.assertEqual(output.splitlines()[0], "dia,evento,local,tipo")
         self.assertIn("2024-07-01,Festival,Anhembi,Festival", output)
+
+    def test_chamadas_export_has_no_personal_columns(self):
+        content = _chamadas_csv([(7, date(2026, 5, 23), 1), (7, date(2026, 5, 23), None)])
+        self.assertEqual(content.decode().splitlines(), [
+            "id_chamada,data_chamada,presenca",
+            "7,2026-05-23,1",
+            "7,2026-05-23,0",
+        ])
+
+    def test_chamadas_silver_counts_presence_per_call(self):
+        content = _chamadas_csv([
+            (8, date(2026, 5, 30), 0),
+            (7, date(2026, 5, 23), 1),
+            (7, date(2026, 5, 23), 0),
+            (8, date(2026, 5, 30), 1),
+            (8, date(2026, 5, 30), 1),
+        ])
+        rows = _chamadas_rows(MemoryS3(content), "bronze", "chamadas/presencas.csv")
+        self.assertEqual(rows, [
+            {"id_chamada": 7, "dia": "2026-05-23", "registros": 2, "presentes": 1},
+            {"id_chamada": 8, "dia": "2026-05-30", "registros": 3, "presentes": 2},
+        ])
 
 
 if __name__ == "__main__":

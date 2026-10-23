@@ -25,6 +25,7 @@ FIELDS = {
     "clima": ("instante", "chuva_mm", "temp_c"),
     "eventos": ("dia", "evento", "local", "tipo"),
     "feriados": ("dia", "nome_feriado"),
+    "chamadas": ("id_chamada", "dia", "registros", "presentes"),
 }
 SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
@@ -281,6 +282,32 @@ def _holiday_rows(s3, bronze_bucket, key):
     ]
 
 
+def _latest_chamadas_key(s3, bronze_bucket):
+    objects = _list_objects(s3, bronze_bucket, "chamadas/")
+    if not objects:
+        raise FileNotFoundError("Nenhuma exportacao de chamadas foi encontrada na Bronze")
+    return max(objects, key=lambda item: (item["LastModified"], item["Key"]))["Key"]
+
+
+def _chamadas_rows(s3, bronze_bucket, key):
+    content = s3.get_object(Bucket=bronze_bucket, Key=key)["Body"].read().decode("utf-8-sig")
+    chamadas = {}
+    for row in csv.DictReader(io.StringIO(content)):
+        dia = _date(row.get("data_chamada"))
+        if dia is None:
+            continue
+        chamada = chamadas.setdefault(
+            int(row["id_chamada"]),
+            {"dia": dia.isoformat(), "registros": 0, "presentes": 0},
+        )
+        chamada["registros"] += 1
+        chamada["presentes"] += row.get("presenca") == "1"
+    return [
+        {"id_chamada": id_chamada, **chamadas[id_chamada]}
+        for id_chamada in sorted(chamadas, key=lambda item: (chamadas[item]["dia"], item))
+    ]
+
+
 def _dispatch(s3, bronze_bucket, silver_bucket, prefix):
     if prefix == "clima/":
         rows = _climate_rows(s3, bronze_bucket)
@@ -296,6 +323,11 @@ def _dispatch(s3, bronze_bucket, silver_bucket, prefix):
         rows = _holiday_rows(s3, bronze_bucket, source_key)
         key = "feriados_nacionais.csv.gz"
         fields = FIELDS["feriados"]
+    elif prefix == "chamadas/":
+        source_key = _latest_chamadas_key(s3, bronze_bucket)
+        rows = _chamadas_rows(s3, bronze_bucket, source_key)
+        key = "presenca_chamadas.csv.gz"
+        fields = FIELDS["chamadas"]
     else:
         raise ValueError(f"Prefixo Bronze desconhecido: {prefix}")
     _write_gzip(s3, silver_bucket, key, fields, rows)
@@ -313,7 +345,7 @@ def handler(event, context):
         if record.get("eventSource") != "aws:s3":
             continue
         key = unquote_plus(record["s3"]["object"]["key"])
-        for prefix in ("clima/", "eventos/", "feriados/"):
+        for prefix in ("clima/", "eventos/", "feriados/", "chamadas/"):
             if key.startswith(prefix):
                 sources.add(prefix)
                 break

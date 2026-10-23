@@ -72,14 +72,20 @@ terraform plan
 terraform apply
 ```
 
-O Terraform empacota o código Python e instala `xlrd` na layer usando o executável configurado em
+O Terraform empacota o código Python e instala `xlrd` e `pymysql` na layer usando o executável configurado em
 `lambda_build_python` (padrão `python`). Em ambientes Windows, informe o caminho do Python com
 `-var='lambda_build_python=C:/Python312/python.exe'` se `python` não estiver no PATH.
 
 As Lambdas de ingestão são agendadas mensalmente para INMET e ANBIMA e semanalmente para
-MusicBrainz. A Silver roda por notificação `s3:ObjectCreated` nos prefixes `clima/`, `eventos/` e
-`feriados/`. Os objetos originais e `manifesto.csv` ficam no bucket Bronze; as saídas são
-`clima_horario.csv.gz`, `eventos_cidade.csv.gz` e `feriados_nacionais.csv.gz` no bucket Silver.
+MusicBrainz e para as chamadas do clube (domingo, depois da reunião de sábado). A Silver roda por
+notificação `s3:ObjectCreated` nos prefixes `clima/`, `eventos/`, `feriados/` e `chamadas/`. Os
+objetos originais e `manifesto.csv` ficam no bucket Bronze; as saídas são `clima_horario.csv.gz`,
+`eventos_cidade.csv.gz`, `feriados_nacionais.csv.gz` e `presenca_chamadas.csv.gz` no bucket Silver.
+
+A `arandu-fatores-chamadas` é a única Lambda dentro da VPC: roda na subnet privada do backend, com
+o SG `arandu-sg-lambda-banco`, liberado na porta 3306 do RDS, e sai para S3 e DynamoDB pelo NAT.
+Ela exporta só `id_chamada`, `data_chamada` e `presenca`, sem nenhum dado pessoal do desbravador,
+e grava um arquivo novo apenas quando o conteúdo muda.
 Os logs ficam em `/aws/lambda/arandu-fatores-*` no CloudWatch, com retenção de 14 dias.
 
 O dump MusicBrainz é baixado em streaming multipart para o S3, sem arquivo local. A Silver também
