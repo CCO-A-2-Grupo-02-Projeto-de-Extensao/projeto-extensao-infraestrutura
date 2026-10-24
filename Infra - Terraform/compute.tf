@@ -61,16 +61,56 @@ rm -f /tmp/bdClubeDesbravadores.sql
 
     systemctl start docker
     systemctl enable docker
-    docker pull ${var.backend_docker_image}
-    docker run -d --name backend --restart unless-stopped -p 8080:8080 \
-      -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
-      -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
-      -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
-      -e JWT_SECRET="${local.jwt_secret}" \
-      -e APP_STORAGE_TYPE="s3" \
-      -e APP_STORAGE_S3_BUCKET="${local.bucket_documentos_name}" \
-      -e APP_STORAGE_S3_REGION="${var.aws_region}" \
-      ${var.backend_docker_image}
+
+# Criar rede Docker para comunicação entre os containers
+docker network create arandu-network 2>/dev/null || true
+
+# Baixar as imagens
+docker pull "${var.backend_docker_image}"
+docker pull rabbitmq:4-management
+
+# Iniciar RabbitMQ primeiro
+docker rm -f rabbitmq 2>/dev/null || true
+
+docker run -d \
+  --name rabbitmq \
+  --network arandu-network \
+  --restart unless-stopped \
+  -p 127.0.0.1:5672:5672 \
+  -p 127.0.0.1:15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=admin \
+  -e RABBITMQ_DEFAULT_PASS=admin \
+  rabbitmq:4-management
+
+# Aguardar o RabbitMQ ficar saudável
+for i in $(seq 1 30); do
+  if docker exec rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
+# Iniciar backend
+docker rm -f backend 2>/dev/null || true
+
+docker run -d \
+  --name backend \
+  --network arandu-network \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
+  -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
+  -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
+  -e JWT_SECRET="${local.jwt_secret}" \
+  -e APP_STORAGE_TYPE="s3" \
+  -e APP_STORAGE_S3_BUCKET="${local.bucket_documentos_name}" \
+  -e APP_STORAGE_S3_REGION="${var.aws_region}" \
+  -e SPRING_RABBITMQ_HOST="rabbitmq" \
+  -e SPRING_RABBITMQ_PORT="5672" \
+  -e SPRING_RABBITMQ_USERNAME="admin" \
+  -e SPRING_RABBITMQ_PASSWORD="admin" \
+  "${var.backend_docker_image}"
+
   EOF
 }
 
