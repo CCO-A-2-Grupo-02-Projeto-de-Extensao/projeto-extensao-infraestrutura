@@ -14,6 +14,10 @@ output "cloudwatch_dashboard_url" {
   value = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${aws_cloudwatch_dashboard.arandu.dashboard_name}"
 }
 
+output "ecr_repository_url" {
+  value = aws_ecr_repository.arandu.repository_url
+}
+
 output "efs_id" {
   value = aws_efs_file_system.arandu.id
 }

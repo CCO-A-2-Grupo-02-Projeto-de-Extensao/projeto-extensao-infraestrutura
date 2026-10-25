@@ -89,15 +89,21 @@ variable "ami_filter" {
 }
 
 variable "frontend_docker_image" {
-  description = "Imagem Docker do Frontend"
+  description = "Imagem Docker do Frontend no Docker Hub, copiada para o ECR"
   type        = string
   default     = "pedrobarbosa996/arandu_digital:frontend"
 }
 
 variable "backend_docker_image" {
-  description = "Imagem Docker do Backend"
+  description = "Imagem Docker do Backend no Docker Hub, copiada para o ECR"
   type        = string
   default     = "pedrobarbosa996/arandu_digital:backend"
+}
+
+variable "ecr_repository_name" {
+  description = "Repositório ECR das imagens do frontend e do backend"
+  type        = string
+  default     = "arandu_digital"
 }
 
 variable "alb_name" {

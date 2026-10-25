@@ -39,6 +39,12 @@ resource "aws_iam_role_policy" "backend_s3" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "backend" {
+  for_each   = var.use_lab_instance_profile ? toset([]) : toset(["AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore"])
+  role       = aws_iam_role.backend[0].name
+  policy_arn = "arn:aws:iam::aws:policy/${each.value}"
+}
+
 resource "aws_iam_instance_profile" "backend" {
   count = var.use_lab_instance_profile ? 0 : 1
   name  = "arandu-backend-profile"
@@ -46,5 +52,5 @@ resource "aws_iam_instance_profile" "backend" {
 }
 
 locals {
-  backend_iam_profile_name = var.use_lab_instance_profile ? "LabInstanceProfile" : aws_iam_instance_profile.backend[0].name
+  instance_profile_name = var.use_lab_instance_profile ? "LabInstanceProfile" : aws_iam_instance_profile.backend[0].name
 }

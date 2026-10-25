@@ -52,7 +52,8 @@ Internet
 | S3 | `arandu-documentos-<account_id>` — documentos do backend |
 | RDS MySQL 8.0 | `db.t3.micro`, banco `bdClubeDesbravadores` |
 | EC2 Frontend ×2 | `t3.micro`, Docker nginx servindo do EFS |
-| EC2 Backend ×1 | `t3.micro`, Docker Spring Boot (subnet privada) |
+| EC2 Backend ×1 | `t3.micro`, Docker Spring Boot + RabbitMQ (subnet privada) |
+| ECR | `arandu_digital:backend` e `:frontend`, de onde as EC2 puxam as imagens |
 | ALB | Roteamento por path para frontend e backend |
 
 ---
@@ -60,8 +61,9 @@ Internet
 ## Pré-requisitos
 
 - AWS CLI instalado e no PATH
+- Docker rodando na máquina local (o script copia as imagens do Docker Hub para o ECR)
 - Bash (Linux, macOS ou WSL no Windows)
-- Credenciais AWS com permissões para EC2, EFS, RDS, S3, IAM e ELB
+- Credenciais AWS com permissões para EC2, EFS, RDS, S3, IAM, ELB, ECR e SSM
 - Par de chaves **não** é necessário criar antes — o script cria automaticamente
 
 ---
@@ -96,23 +98,18 @@ Ao rodar o script novamente com a VPC já existente, ele oferece a opção de de
 
 ---
 
-## Atualizar o frontend
+## Imagens no ECR e atualização
 
-Os arquivos do frontend ficam armazenados no EFS em `/mnt/efs/frontend/`.  
-Na primeira execução de cada instância, os arquivos são copiados automaticamente da imagem Docker.
+O CI de cada repo publica a imagem no Docker Hub (`pedrobarbosa996/arandu_digital:backend` e `:frontend`).
+Ao provisionar, o script cria o repositório `arandu_digital` no ECR da conta que está rodando e copia as duas imagens para lá; as EC2 puxam do ECR usando o instance profile.
+Como cada integrante usa a própria conta do AWS Academy, cada um tem o próprio ECR.
 
-Para forçar atualização com uma nova versão da imagem:
+Para publicar uma versão nova depois que o CI terminar, rode o script com a infraestrutura de pé e escolha a opção **4 - Atualizar imagens**. Ela:
 
-```bash
-# Na instância frontend (via SSH a partir do jump host)
-rm /mnt/efs/frontend/.deployed
-docker stop frontend && docker rm frontend
-# O container sobe novamente pelo restart policy e repopula o EFS
-docker run -d --name frontend --restart unless-stopped \
-  -p 80:80 \
-  -v /mnt/efs/frontend:/usr/share/nginx/html:ro \
-  pedrobarbosa996/arandu_digital:frontend
-```
+1. copia de novo as imagens do Docker Hub para o ECR;
+2. executa `/opt/arandu/deploy.sh` em cada instância via SSM, que puxa a imagem do ECR e recria o container (no frontend, também recopia os arquivos para o EFS).
+
+Sem SSH e sem recriar a infraestrutura. O mesmo `deploy.sh` pode ser rodado à mão dentro da instância.
 
 ---
 

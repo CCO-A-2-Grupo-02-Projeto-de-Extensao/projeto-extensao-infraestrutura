@@ -37,6 +37,9 @@ TESTE_LB_SCRIPT="testar_loadbalancer.sh"
 AMI_OWNER="099720109477"
 AMI_FILTER="ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
 BACKEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:backend"
+FRONTEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
+ECR_REPO="arandu_digital"
+ECR_REGISTRY=""
 TG_BACKEND_NAME="tg-arandu-backend"
 IAM_ROLE_NAME="arandu-backend-role"
 IAM_PROFILE_NAME="arandu-backend-profile"
@@ -332,6 +335,10 @@ obter_instance_profile() {
             }]
         }" > /dev/null
 
+    for policy in AmazonEC2ContainerRegistryReadOnly AmazonSSMManagedInstanceCore; do
+        aws iam attach-role-policy --role-name "$IAM_ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy"
+    done
+
     aws iam create-instance-profile --instance-profile-name "$IAM_PROFILE_NAME" > /dev/null
     aws iam add-role-to-instance-profile \
         --instance-profile-name "$IAM_PROFILE_NAME" \
@@ -354,7 +361,54 @@ deletar_iam_backend() {
         --role-name "$IAM_ROLE_NAME"
     safe_delete aws iam delete-instance-profile --instance-profile-name "$IAM_PROFILE_NAME"
     safe_delete aws iam delete-role-policy --role-name "$IAM_ROLE_NAME" --policy-name "arandu-s3-policy"
+    for policy in AmazonEC2ContainerRegistryReadOnly AmazonSSMManagedInstanceCore; do
+        safe_delete aws iam detach-role-policy --role-name "$IAM_ROLE_NAME" --policy-arn "arn:aws:iam::aws:policy/$policy"
+    done
     safe_delete aws iam delete-role --role-name "$IAM_ROLE_NAME"
+}
+
+sincronizar_ecr() {
+    log "Copiando imagens do Docker Hub para o ECR ($ECR_REGISTRY/$ECR_REPO)..."
+    aws ecr describe-repositories --repository-names "$ECR_REPO" > /dev/null 2>&1 || \
+        aws ecr create-repository --repository-name "$ECR_REPO" > /dev/null
+    aws ecr get-login-password --region "$REGIAO" | \
+        docker login --username AWS --password-stdin "$ECR_REGISTRY" > /dev/null
+    for imagem in "$BACKEND_DOCKER_IMAGE" "$FRONTEND_DOCKER_IMAGE"; do
+        local destino="$ECR_REGISTRY/$ECR_REPO:${imagem##*:}"
+        docker pull -q "$imagem" > /dev/null
+        docker tag "$imagem" "$destino"
+        docker push -q "$destino" > /dev/null
+        log "Imagem publicada: $destino"
+    done
+}
+
+deletar_ecr() {
+    log "Removendo repositório ECR..."
+    safe_delete aws ecr delete-repository --repository-name "$ECR_REPO" --force
+}
+
+atualizar_imagens() {
+    sincronizar_ecr
+    local ids
+    ids=$(aws ec2 describe-instances \
+        --filters "Name=vpc-id,Values=$VPC_ID" "Name=instance-state-name,Values=running" \
+        --query "Reservations[].Instances[].InstanceId" \
+        --output text)
+    if [[ -z "$ids" ]]; then warn "Nenhuma instância em execução."; return; fi
+
+    log "Reiniciando os containers nas instâncias via SSM..."
+    local cmd_id
+    cmd_id=$(aws ssm send-command \
+        --document-name "AWS-RunShellScript" \
+        --instance-ids $ids \
+        --parameters 'commands=["/opt/arandu/deploy.sh"]' \
+        --query "Command.CommandId" \
+        --output text)
+    aws_wait 600 10 aws ssm list-commands --command-id "$cmd_id" \
+        --query "Commands[?Status=='Pending'||Status=='InProgress'].CommandId" --output text || true
+    for id in $ids; do
+        log "$id: $(aws ssm get-command-invocation --command-id "$cmd_id" --instance-id "$id" --query Status --output text)"
+    done
 }
 
 # -----------------------------------------------------------------------------
@@ -390,14 +444,14 @@ criar_efs() {
 # -----------------------------------------------------------------------------
 # User data — Docker + nginx
 # -----------------------------------------------------------------------------
-FRONTEND_DOCKER_IMAGE="pedrobarbosa996/arandu_digital:frontend"
 gerar_user_data() {
     local efs_id=$1
+    local imagem="$ECR_REGISTRY/$ECR_REPO:frontend"
     cat <<EOF
 #!/bin/bash
 until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
 apt-get update -y
-apt-get install -y docker.io nfs-common
+apt-get install -y docker.io nfs-common awscli
 
 EFS_DNS="${efs_id}.efs.${REGIAO}.amazonaws.com"
 mkdir -p /mnt/efs
@@ -407,14 +461,18 @@ echo "\$EFS_DNS:/ /mnt/efs nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,tim
 systemctl start docker
 systemctl enable docker
 
-mkdir -p /mnt/efs/frontend
-if [ ! -f /mnt/efs/frontend/.deployed ]; then
-    docker pull ${FRONTEND_DOCKER_IMAGE}
-    docker run --rm -v /mnt/efs/frontend:/output ${FRONTEND_DOCKER_IMAGE} sh -c "cp -r /usr/share/nginx/html/. /output/"
-    touch /mnt/efs/frontend/.deployed
-fi
-
+mkdir -p /mnt/efs/frontend /opt/arandu
+cat << 'DEPLOY' > /opt/arandu/deploy.sh
+#!/bin/bash
+set -e
+aws ecr get-login-password --region ${REGIAO} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+docker pull ${imagem}
+docker run --rm -v /mnt/efs/frontend:/output ${imagem} sh -c "cp -r /usr/share/nginx/html/. /output/"
 INSTANCE_IP=\$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+docker rm -f frontend 2>/dev/null || true
+docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="\$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${imagem}
+DEPLOY
+chmod 700 /opt/arandu/deploy.sh
 
 mkdir -p /home/ubuntu/.ssh
 cat << SSHKEY > /home/ubuntu/.ssh/arandu-key.pem
@@ -423,7 +481,7 @@ SSHKEY
 chmod 400 /home/ubuntu/.ssh/arandu-key.pem
 chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 
-docker run -d --name frontend --restart unless-stopped -p 80:80 -e INSTANCE_IP="\$INSTANCE_IP" -v /mnt/efs/frontend:/usr/share/nginx/html:ro ${FRONTEND_DOCKER_IMAGE}
+/opt/arandu/deploy.sh
 EOF
 }
 
@@ -634,11 +692,12 @@ criar_rds() {
 
 gerar_user_data_backend() {
     local rds_endpoint=$1 s3_bucket=$2
+    local imagem="$ECR_REGISTRY/$ECR_REPO:backend"
     cat <<EOF
 #!/bin/bash
 until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
 apt-get update -y
-apt-get install -y mysql-client curl docker.io
+apt-get install -y mysql-client curl docker.io awscli
 
 until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
 
@@ -648,8 +707,26 @@ rm -f /tmp/bdClubeDesbravadores.sql
 
 systemctl start docker
 systemctl enable docker
-docker pull ${BACKEND_DOCKER_IMAGE}
-docker run -d --name backend --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" ${BACKEND_DOCKER_IMAGE}
+
+mkdir -p /opt/arandu
+cat << 'DEPLOY' > /opt/arandu/deploy.sh
+#!/bin/bash
+set -e
+aws ecr get-login-password --region ${REGIAO} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+docker pull ${imagem}
+docker network create arandu-network 2>/dev/null || true
+if ! docker inspect rabbitmq > /dev/null 2>&1; then
+    docker run -d --name rabbitmq --network arandu-network --restart unless-stopped -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672 -e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=admin rabbitmq:4-management
+fi
+for i in \$(seq 1 30); do
+    docker exec rabbitmq rabbitmq-diagnostics -q ping > /dev/null 2>&1 && break
+    sleep 2
+done
+docker rm -f backend 2>/dev/null || true
+docker run -d --name backend --network arandu-network --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" -e SPRING_RABBITMQ_HOST="rabbitmq" -e SPRING_RABBITMQ_PORT="5672" -e SPRING_RABBITMQ_USERNAME="admin" -e SPRING_RABBITMQ_PASSWORD="admin" ${imagem}
+DEPLOY
+chmod 700 /opt/arandu/deploy.sh
+/opt/arandu/deploy.sh
 EOF
 }
 
@@ -1138,25 +1215,27 @@ criar_infraestrutura() {
         --output text > arandu-key.pem
     chmod 400 arandu-key.pem
 
+    sincronizar_ecr
+
     EFS_ID=$(criar_efs "$SG_EFS")
+
+    log "Criando buckets S3..."
+    criar_s3
+
+    log "Obtendo instance profile IAM das instâncias..."
+    INSTANCE_PROFILE=$(obter_instance_profile "$S3_BUCKET")
 
     log "Gerando user data do Nginx + EFS..."
     KEY_CONTENT=$(cat arandu-key.pem) gerar_user_data "$EFS_ID" > user_data_nginx.sh
 
     log "Criando instâncias frontend..."
-    FRONTEND_1_ID=$(criar_instancia ec2-arandu-frontend-1 frontend "$SUBNET_PUBLICA"   10.0.1.10 "$SG_FRONTEND" user_data_nginx.sh)
-    FRONTEND_2_ID=$(criar_instancia ec2-arandu-frontend-2 frontend "$SUBNET_PUBLICA_2" 10.0.4.10 "$SG_FRONTEND" user_data_nginx.sh)
+    FRONTEND_1_ID=$(criar_instancia ec2-arandu-frontend-1 frontend "$SUBNET_PUBLICA"   10.0.1.10 "$SG_FRONTEND" user_data_nginx.sh "$INSTANCE_PROFILE")
+    FRONTEND_2_ID=$(criar_instancia ec2-arandu-frontend-2 frontend "$SUBNET_PUBLICA_2" 10.0.4.10 "$SG_FRONTEND" user_data_nginx.sh "$INSTANCE_PROFILE")
     aws ec2 wait instance-running --instance-ids "$FRONTEND_1_ID" "$FRONTEND_2_ID"
     criar_alb "$SG_ALB" "$FRONTEND_1_ID" "$FRONTEND_2_ID"
 
     APP_DNS="$ALB_DNS"
     APP_URL="http://$APP_DNS"
-
-    log "Criando buckets S3..."
-    criar_s3
-
-    log "Obtendo instance profile IAM para o backend..."
-    BACKEND_PROFILE=$(obter_instance_profile "$S3_BUCKET")
 
     log "Criando RDS MySQL..."
     RDS_ENDPOINT=$(criar_rds "$SG_DB" "$SUBNET_DB" "$SUBNET_DB_2")
@@ -1165,7 +1244,7 @@ criar_infraestrutura() {
     gerar_user_data_backend "$RDS_ENDPOINT" "$S3_BUCKET" > user_data_backend.sh
 
     log "Criando instância backend..."
-    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND" user_data_backend.sh "$BACKEND_PROFILE")
+    BACKEND_ID=$(criar_instancia ec2-arandu-backend backend "$SUBNET_PRIVADA" 10.0.2.10 "$SG_BACKEND" user_data_backend.sh "$INSTANCE_PROFILE")
     aws ec2 wait instance-running --instance-ids "$BACKEND_ID"
 
     log "Configurando roteamento Swagger no ALB..."
@@ -1181,7 +1260,7 @@ criar_infraestrutura() {
     log "Infraestrutura criada com sucesso!"
     log "EFS ID:             $EFS_ID"
     log "Frontend (EFS):     /mnt/efs/frontend  ← servido pelas 2 instâncias"
-    log "Frontend imagem:    $FRONTEND_DOCKER_IMAGE"
+    log "Imagens (ECR):      $ECR_REGISTRY/$ECR_REPO:frontend e :backend"
     log "S3 Documentos:      $S3_BUCKET"
     log "S3 Bronze:          $BUCKET_BRONZE"
     log "S3 Silver:          $BUCKET_SILVER"
@@ -1215,6 +1294,7 @@ deletar_infraestrutura() {
     deletar_security_groups
     deletar_s3
     deletar_iam_backend
+    deletar_ecr
 
     log "Removendo arquivos locais..."
     safe_delete aws ec2 delete-key-pair --key-name "$KEY_NAME"
@@ -1228,6 +1308,7 @@ deletar_infraestrutura() {
 clear
 echo -e "\n\n\n"
 configurar_credenciais
+ECR_REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${REGIAO}.amazonaws.com"
 
 VPC_ID=$(aws ec2 describe-vpcs \
     --filters "Name=tag:Name,Values=$VPC_NAME" \
@@ -1242,11 +1323,14 @@ else
     echo "1 - Manter infraestrutura"
     echo "2 - Deletar TUDO da VPC"
     echo "3 - Consultar Custos (AWS Cost Explorer)"
+    echo "4 - Atualizar imagens (Docker Hub → ECR → instâncias)"
     read -r opcao
 
     if [[ "$opcao" == "2" ]]; then
         deletar_infraestrutura
     elif [[ "$opcao" == "3" ]]; then
         consultar_custos
+    elif [[ "$opcao" == "4" ]]; then
+        atualizar_imagens
     fi
 fi
