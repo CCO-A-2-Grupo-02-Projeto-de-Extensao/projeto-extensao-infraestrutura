@@ -1038,7 +1038,7 @@ deletar_route_tables() {
     log "Removendo tabelas de rota..."
     local rts=$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?length(Associations[?Main==\`true\`]) == \`0\`].RouteTableId" --output text 2>/dev/null || true)
     for rt in $rts; do
-        local assocs=$(aws ec2 describe-route-tables --route-table-ids "$rt" --query "RouteTables[].Associations[?Main==\false\].RouteTableAssociationId" --output text 2>/dev/null || true)
+        local assocs=$(aws ec2 describe-route-tables --route-table-ids "$rt" --query "RouteTables[].Associations[?Main==\`false\`].RouteTableAssociationId" --output text 2>/dev/null || true)
         for assoc in $assocs; do safe_delete aws ec2 disassociate-route-table --association-id "$assoc"; done
         safe_delete aws ec2 delete-route-table --route-table-id "$rt"
     done
@@ -1056,7 +1056,7 @@ deletar_igw() {
 deletar_nacls() {
     log "Removendo NACLs customizadas..."
     local default_nacl=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" "Name=default,Values=true" --query "NetworkAcls[0].NetworkAclId" --output text 2>/dev/null || true)
-    local custom_nacls=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkAcls[?IsDefault==\false\].NetworkAclId" --output text 2>/dev/null || true)
+    local custom_nacls=$(aws ec2 describe-network-acls --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkAcls[?IsDefault==\`false\`].NetworkAclId" --output text 2>/dev/null || true)
     for nacl in $custom_nacls; do
         local assocs=$(aws ec2 describe-network-acls --network-acl-ids "$nacl" --query "NetworkAcls[].Associations[].NetworkAclAssociationId" --output text 2>/dev/null || true)
         for assoc in $assocs; do
