@@ -113,6 +113,14 @@ resource "aws_security_group" "backend" {
     security_groups = [aws_security_group.frontend.id]
   }
 
+    ingress {
+    description     = "Porta 15672 para comunicacao com o RabbitMQ"
+    from_port       = 15672
+    to_port         = 15672
+    protocol        = "tcp"
+    security_groups = [aws_security_group.frontend.id]
+  }
+
   egress {
     description = "Trafego de saida liberado"
     from_port   = 0

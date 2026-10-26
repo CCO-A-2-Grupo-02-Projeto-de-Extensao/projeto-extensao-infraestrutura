@@ -79,7 +79,7 @@ if ! docker inspect rabbitmq > /dev/null 2>&1; then
     --network arandu-network \
     --restart unless-stopped \
     -p 127.0.0.1:5672:5672 \
-    -p 127.0.0.1:15672:15672 \
+    -p 10.0.2.10:15672:15672 \
     -e RABBITMQ_DEFAULT_USER=admin \
     -e RABBITMQ_DEFAULT_PASS=admin \
     rabbitmq:4-management
