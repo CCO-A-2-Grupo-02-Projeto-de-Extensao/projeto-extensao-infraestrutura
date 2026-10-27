@@ -274,6 +274,21 @@ resource "aws_s3_bucket_notification" "bronze" {
   ]
 }
 
+resource "terraform_data" "primeira_ingestao" {
+  for_each = aws_lambda_function.ingestion
+
+  input = each.value.function_name
+
+  provisioner "local-exec" {
+    command = "aws lambda invoke --function-name \"${self.input}\" --invocation-type Event --region ${var.aws_region} /dev/null"
+  }
+
+  depends_on = [
+    aws_s3_bucket_notification.bronze,
+    aws_cloudwatch_log_group.factors_lambda
+  ]
+}
+
 output "fatores_lambda_ingestion" {
   description = "Lambdas de ingestao Bronze"
   value       = { for source, function in aws_lambda_function.ingestion : source => function.function_name }
