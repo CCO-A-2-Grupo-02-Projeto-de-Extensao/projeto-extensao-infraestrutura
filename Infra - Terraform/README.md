@@ -42,7 +42,7 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 1. Configurar as credenciais da AWS no terminal (`aws configure` ou variaveis de ambiente).
 
   No AWS Academy, a role existente `LabRole` é usada pelas funções. A role precisa permitir
-  operações S3 nos buckets Bronze/Silver, DynamoDB para o lock do manifesto e escrita de logs
+  operações S3 nos buckets Bronze/Silver, DynamoDB para o lock do `alteracoes.csv` e escrita de logs
   CloudWatch — a `LabRole` já cobre isso pelas `VocLabPolicy` anexadas a ela.
 
   A conta do Learner Lab **nega `iam:PutRolePolicy`**, então a política inline
@@ -79,7 +79,7 @@ O Terraform empacota o código Python e instala `xlrd` e `pymysql` na layer usan
 As Lambdas de ingestão são agendadas mensalmente para INMET e ANBIMA e semanalmente para
 MusicBrainz e para as chamadas do clube (domingo, depois da reunião de sábado). A Silver roda por
 notificação `s3:ObjectCreated` nos prefixes `clima/`, `eventos/`, `feriados/` e `chamadas/`. Os
-objetos originais e `manifesto.csv` ficam no bucket Bronze; as saídas são `clima_horario.csv.gz`,
+objetos originais e `alteracoes.csv` ficam no bucket Bronze; as saídas são `clima_horario.csv.gz`,
 `eventos_cidade.csv.gz`, `feriados_nacionais.csv.gz` e `presenca_chamadas.csv.gz` no bucket Silver.
 
 A `arandu-fatores-chamadas` é a única Lambda dentro da VPC: roda na subnet privada do backend, com

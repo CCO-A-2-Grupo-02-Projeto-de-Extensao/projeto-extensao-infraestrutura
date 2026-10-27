@@ -17,7 +17,7 @@ LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 USER_AGENT = "Arandu-FatoresExternos/1.0 (data ingestion)"
 PART_SIZE = 8 * 1024 * 1024
-MANIFEST_FIELDS = ("fonte", "data_coleta", "tamanho_bytes", "url", "arquivo_s3")
+ALTERACOES_FIELDS = ("fonte", "data_coleta", "tamanho_bytes", "url", "arquivo_s3")
 CHAMADAS_FIELDS = ("id_chamada", "data_chamada", "presenca")
 CHAMADAS_QUERY = (
     "SELECT c.idChamada, c.data_chamada, p.presenca "
@@ -127,9 +127,9 @@ def _stream_to_s3(s3, bucket, key, url, referer=None):
         response.close()
 
 
-def _append_manifest(s3, dynamodb, bucket, table_name, record):
+def _append_alteracoes(s3, dynamodb, bucket, table_name, record):
     table = dynamodb.Table(table_name)
-    lock_id = "manifesto.csv"
+    lock_id = "alteracoes.csv"
     owner = str(uuid.uuid4())
     now = int(time.time())
     acquired = False
@@ -146,11 +146,11 @@ def _append_manifest(s3, dynamodb, bucket, table_name, record):
         except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
             time.sleep(0.25)
     if not acquired:
-        raise TimeoutError("Nao foi possivel adquirir o lock do manifesto.csv")
+        raise TimeoutError("Nao foi possivel adquirir o lock do alteracoes.csv")
 
     try:
         try:
-            response = s3.get_object(Bucket=bucket, Key="manifesto.csv")
+            response = s3.get_object(Bucket=bucket, Key="alteracoes.csv")
             existing = response["Body"].read().decode("utf-8-sig")
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
@@ -162,13 +162,13 @@ def _append_manifest(s3, dynamodb, bucket, table_name, record):
         if any(row.get("arquivo_s3") == record["arquivo_s3"] for row in rows):
             return
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=MANIFEST_FIELDS, lineterminator="\n")
+        writer = csv.DictWriter(output, fieldnames=ALTERACOES_FIELDS, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
         writer.writerow(record)
         s3.put_object(
             Bucket=bucket,
-            Key="manifesto.csv",
+            Key="alteracoes.csv",
             Body=output.getvalue().encode("utf-8"),
             ContentType="text/csv; charset=utf-8",
         )
@@ -190,7 +190,7 @@ def _ingest(s3, dynamodb, bucket, table_name, source, url, key, referer=None):
         size = s3.head_object(Bucket=bucket, Key=key)["ContentLength"]
         LOGGER.info("bronze_exists source=%s key=%s bytes=%d", source, key, size)
 
-    _append_manifest(
+    _append_alteracoes(
         s3,
         dynamodb,
         bucket,
@@ -293,7 +293,7 @@ def chamadas_handler(event, context):
     else:
         LOGGER.info("bronze_exists source=chamadas key=%s rows=%d", key, len(rows))
 
-    _append_manifest(
+    _append_alteracoes(
         s3,
         dynamodb,
         bucket,
