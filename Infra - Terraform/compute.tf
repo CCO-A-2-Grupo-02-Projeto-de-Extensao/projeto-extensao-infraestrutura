@@ -14,6 +14,9 @@ data "aws_ami" "ubuntu" {
 }
 
 locals {
+  mail_username = var.mail_username != null ? var.mail_username : "usuario@exemplo.com"
+  mail_password = var.mail_password != null ? var.mail_password : "senha-de-app-do-google"
+
   user_data_frontend = <<-EOF
 #!/bin/bash
 until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
@@ -107,8 +110,8 @@ docker run -d \
   -e SPRING_RABBITMQ_PASSWORD="admin" \
   -e SPRING_MAILSENDER_HOST="smtp.gmail.com" \
   -e SPRING_MAILSENDER_PORT="587" \
-  -e SPRING_MAILSENDER_USERNAME="${var.mail_username}" \
-  -e SPRING_MAILSENDER_PASSWORD="${var.mail_password}" \
+  -e SPRING_MAILSENDER_USERNAME="${local.mail_username}" \
+  -e SPRING_MAILSENDER_PASSWORD="${local.mail_password}" \
   "${local.backend_ecr_image}"
 DEPLOY
 chmod 700 /opt/arandu/deploy.sh
