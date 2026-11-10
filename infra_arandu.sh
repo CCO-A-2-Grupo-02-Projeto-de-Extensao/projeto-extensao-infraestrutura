@@ -43,6 +43,8 @@ ECR_REGISTRY=""
 TG_BACKEND_NAME="tg-arandu-backend"
 IAM_ROLE_NAME="arandu-backend-role"
 IAM_PROFILE_NAME="arandu-backend-profile"
+SPRING_MAILSENDER_USERNAME="${SPRING_MAILSENDER_USERNAME:-"teste@email.com"}"
+SPRING_MAILSENDER_PASSWORD="${SPRING_MAILSENDER_PASSWORD:-"teste"}"
 
 # S3 — Identificador e Buckets (Armazenamento e Arquitetura Medalhão)
 # O identificador do membro evita conflito de nomes globais no S3 entre integrantes do grupo.
@@ -723,7 +725,7 @@ for i in \$(seq 1 30); do
     sleep 2
 done
 docker rm -f backend 2>/dev/null || true
-docker run -d --name backend --network arandu-network --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" -e SPRING_RABBITMQ_HOST="rabbitmq" -e SPRING_RABBITMQ_PORT="5672" -e SPRING_RABBITMQ_USERNAME="admin" -e SPRING_RABBITMQ_PASSWORD="admin" ${imagem}
+docker run -d --name backend --network arandu-network --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" -e SPRING_RABBITMQ_HOST="rabbitmq" -e SPRING_RABBITMQ_PORT="5672" -e SPRING_RABBITMQ_USERNAME="admin" -e SPRING_RABBITMQ_PASSWORD="admin" -e SPRING_RABBITMQ_PASSWORD="admin" -e SPRING_MAILSENDER_USERNAME="${SPRING_MAILSENDER_USERNAME}" -e SPRING_MAILSENDER_PASSWORD="${SPRING_MAILSENDER_PASSWORD}" ${imagem}
 DEPLOY
 chmod 700 /opt/arandu/deploy.sh
 /opt/arandu/deploy.sh

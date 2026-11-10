@@ -238,3 +238,17 @@ variable "manage_lambda_role_policy" {
   type        = bool
   default     = false
 }
+
+variable "mail_username" {
+  description = "Nome de usuário do email SMTP (Gmail)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "mail_password" {
+  description = "Senha do email SMTP (Gmail)"
+  type        = string
+  default     = null
+  sensitive   = true
+}

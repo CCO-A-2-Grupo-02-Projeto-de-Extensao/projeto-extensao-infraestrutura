@@ -105,6 +105,10 @@ docker run -d \
   -e SPRING_RABBITMQ_PORT="5672" \
   -e SPRING_RABBITMQ_USERNAME="admin" \
   -e SPRING_RABBITMQ_PASSWORD="admin" \
+  -e SPRING_MAILSENDER_HOST="smtp.gmail.com" \
+  -e SPRING_MAILSENDER_PORT="587" \
+  -e SPRING_MAILSENDER_USERNAME="${var.mail_username}" \
+  -e SPRING_MAILSENDER_PASSWORD="${var.mail_password}" \
   "${local.backend_ecr_image}"
 DEPLOY
 chmod 700 /opt/arandu/deploy.sh
