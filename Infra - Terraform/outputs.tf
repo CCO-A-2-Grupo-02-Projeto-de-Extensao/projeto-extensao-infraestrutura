@@ -42,6 +42,21 @@ output "s3_bucket_gold" {
   value       = local.bucket_gold_name
 }
 
+output "s3_bucket_backups" {
+  description = "Nome do bucket S3 com os backups diarios do banco"
+  value       = local.bucket_backups_name
+}
+
+output "backup_sns_topic" {
+  description = "Topico SNS que avisa o administrador sobre o backup diario"
+  value       = aws_sns_topic.backup.arn
+}
+
+output "backup_cron_schedule" {
+  description = "Agenda (UTC) do Cron Job de backup na EC2 de backend"
+  value       = var.backup_cron_schedule
+}
+
 output "rds_endpoint" {
   value = aws_db_instance.arandu.endpoint
 }

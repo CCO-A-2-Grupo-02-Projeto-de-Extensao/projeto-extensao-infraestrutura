@@ -10,7 +10,8 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 - Instancias EC2 para 2 Frontends (Nginx) e 1 Backend (Spring Boot)
 - RDS MySQL 8.0 na rede privada
 - Sistema de arquivos EFS para sincronizacao dos assets do Frontend
-- Bucket S3 para documentos e buckets da arquitetura medalhao (Bronze, Silver, Gold)
+- Bucket S3 para documentos, bucket de backups do banco e buckets da arquitetura medalhao (Bronze, Silver, Gold)
+- Backup completo diario do banco (script + Cron Job na EC2 de backend, com envio ao S3 e aviso por e-mail via SNS)
 - Security Groups e NACLs
 - Dashboard de monitoramento no CloudWatch
 
@@ -23,13 +24,15 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 | `vpc.tf` | VPC, Subnets, Internet Gateway, NAT Gateway, Tabelas de Rota e NACL |
 | `security_groups.tf` | Definição dos 5 Security Groups e suas regras de firewall |
 | `iam.tf` | Role e Instance Profile para o Backend acessar o S3 (compatível com AWS Academy) |
-| `s3.tf` | Buckets S3 (documentos + medalhão), criados via AWS CLI — ver *Restrições do AWS Academy* |
+| `s3.tf` | Buckets S3 (documentos + backups + medalhão), criados via AWS CLI — ver *Restrições do AWS Academy* |
 | `efs.tf` | File system EFS e mount targets nas subnets públicas |
 | `key_pair.tf` | Geração do par de chaves SSH e exportação de `arandu-key.pem` |
 | `rds.tf` | Subnet group e instância RDS MySQL 8.0 |
 | `compute.tf` | Lookup de AMI Ubuntu, user data scripts e instâncias EC2 |
 | `alb.tf` | ALB, Target Groups de Frontend e Backend, Listeners e regras de path |
 | `cloudwatch.tf` | Dashboard de métricas unificado no CloudWatch |
+| `backup.tf` | Tópico SNS de aviso e instalação do script, da configuração e do Cron Job na EC2 de backend |
+| `scripts/backup_banco.sh` | Backup completo diário do banco: dump SQL, envio ao S3, e-mail ao administrador e retenção |
 | `lambda.tf` | Ingestão Bronze, transformação Silver, IAM, agendas e triggers |
 | `tests/` | Testes unitários das transformações Silver (`pytest`) |
 | `lambda_src/` | Handlers Python das funções Lambda |
@@ -98,6 +101,83 @@ Como referência, o dump `20260926-001002/event.tar.xz` (49.483.012 bytes) foi p
 Windows em 4,51 s, gerando 235 linhas para São Paulo; a amostragem do processo apontou pico de RSS
 de 45,07 MiB. A transferência HTTP levou 41,28 s. Esses números locais não substituem o primeiro
 teste na Lambda: confirme duração e `Max Memory Used` no registro `REPORT` do CloudWatch.
+
+## Backup do Banco de Dados
+
+O backup completo roda todo dia na EC2 de backend — a única instância que enxerga o RDS na
+subnet privada. O Terraform instala três coisas no `user data` dessa instância (`backup.tf`):
+
+| Caminho na instância | Conteúdo |
+|---|---|
+| `/opt/arandu/backup_banco.sh` | O script de backup (vai embutido em base64 no user data) |
+| `/etc/arandu/backup.env` | Endereço do RDS, credenciais, bucket, retenção e dados do SMTP (modo 600) |
+| `/etc/cron.d/arandu-backup` | O Cron Job diário, com log em `/var/log/arandu-backup.log` |
+
+O aviso ao administrador sai pelo tópico SNS `arandu-backup-banco`, criado no mesmo apply.
+
+A cada execução o script:
+
+1. gera o dump com `mysqldump` em `/var/backups/arandu/bdClubeDesbravadores-aaaa-mm-dd.sql`
+   (a data ISO no nome é exigida pela atividade e deixa os arquivos ordenáveis);
+2. envia para `s3://<bucket-de-backups>/backups/banco/<ano>/<mês>/` e **confere o tamanho do objeto**
+   com `head-object` — um upload que não grava nada é o tipo de falha que só aparece na restauração;
+3. avisa o administrador por e-mail, tanto no sucesso (com tamanho, destino e comando de restauração)
+   quanto no erro (com a etapa que falhou e a saída do comando);
+4. aplica a retenção: apaga as cópias locais com mais de `backup_local_retention_days` dias e os
+   objetos do S3 com mais de `backup_s3_retention_days` dias, nunca o backup do próprio dia.
+
+### Por que SNS e não SMTP direto
+
+**A AWS bloqueia a saída SMTP das instâncias EC2 em contas sandbox.** Medido na própria EC2 de
+backend deste projeto: as portas 25, 465, 587 e 2525 dão *connection timeout*, enquanto a 443
+responde normalmente. Nenhuma credencial resolve isso — o pacote não sai da instância. O mesmo
+vale para o `EmailService` do backend, que também aponta para `smtp.gmail.com`.
+
+Por isso a notificação sai pelo **SNS**, que fala HTTPS: o script publica no tópico
+`arandu-backup-banco` e a AWS entrega o e-mail. O envio direto por SMTP continua no script como
+segunda opção, para quem rodar esta infra fora de uma conta com esse bloqueio.
+
+> **Depois do primeiro apply, confirme a inscrição.** A AWS envia um e-mail com o assunto
+> *AWS Notification - Subscription Confirmation* para o endereço de `backup_email_to`. Enquanto
+> ninguém clicar em **Confirm subscription**, o `sns publish` é aceito, o backup termina com
+> sucesso — e nenhum e-mail chega. Para conferir o estado:
+>
+> ```bash
+> aws sns list-subscriptions-by-topic --topic-arn "$(terraform output -raw backup_sns_topic)"
+> ```
+
+Sem SNS e sem credenciais SMTP, o backup continua rodando normalmente e só registra no log que a
+notificação está desativada.
+
+### Variáveis
+
+| Variável | Padrão | Função |
+|---|---|---|
+| `backup_cron_schedule` | `0 6 * * *` | Agenda do Cron Job, **em UTC** (06:00 UTC = 03:00 em Brasília) |
+| `backup_email_to` | `pedroclaudinob4rbosa@gmail.com` | Destinatário do aviso |
+| `backup_s3_prefix` | `backups/banco` | Prefixo dentro do bucket |
+| `backup_local_retention_days` | `3` | Retenção das cópias locais (0 desativa) |
+| `backup_s3_retention_days` | `30` | Retenção no S3 (0 desativa) |
+| `bucket_backups_name` | `arandu-backups-<account_id>` | Bucket de destino |
+| `backup_mail_smtp` | `smtp://smtp.gmail.com:587` | Servidor SMTP da segunda opção de aviso |
+
+```bash
+terraform apply -var='backup_email_to=outro@email.com' -var='backup_cron_schedule=0 9 * * *'
+```
+
+### Testar a restauração
+
+Um backup não testado não é backup. Para rodar fora da agenda e restaurar:
+
+```bash
+# na EC2 de backend
+sudo /opt/arandu/backup_banco.sh
+tail -f /var/log/arandu-backup.log
+
+# restauração (de preferência num schema de teste)
+aws s3 cp s3://<bucket-de-backups>/backups/banco/<ano>/<mes>/<arquivo>.sql .
+mysql -h <endpoint-do-rds> -u admin -p < <arquivo>.sql
+```
 
 ## Acessos
 

@@ -54,6 +54,22 @@ S3_BUCKET=""
 BUCKET_BRONZE=""
 BUCKET_SILVER=""
 BUCKET_GOLD=""
+BUCKET_BACKUPS=""
+
+# Backup diário do banco — o script roda na EC2 de backend via Cron Job.
+# A agenda é em UTC: 06:00 UTC = 03:00 em Brasília.
+RAIZ_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_SCRIPT_PATH="${BACKUP_SCRIPT_PATH:-$RAIZ_SCRIPT/Infra - Terraform/scripts/backup_banco.sh}"
+BACKUP_CRON="${BACKUP_CRON:-0 6 * * *}"
+BACKUP_S3_PREFIX="${BACKUP_S3_PREFIX:-backups/banco}"
+BACKUP_LOCAL_RETENTION_DAYS="${BACKUP_LOCAL_RETENTION_DAYS:-3}"
+BACKUP_S3_RETENTION_DAYS="${BACKUP_S3_RETENTION_DAYS:-30}"
+BACKUP_EMAIL_TO="${BACKUP_EMAIL_TO:-"pedroclaudinob4rbosa@gmail.com"}"
+BACKUP_MAIL_SMTP="${BACKUP_MAIL_SMTP:-smtp://smtp.gmail.com:587}"
+# O aviso sai por SNS porque a AWS bloqueia a saida SMTP (25/465/587) nas EC2
+# de contas sandbox. A inscricao por e-mail exige um clique de confirmacao.
+BACKUP_SNS_TOPIC_NAME="${BACKUP_SNS_TOPIC_NAME:-arandu-backup-banco}"
+BACKUP_SNS_TOPIC_ARN=""
 
 # Subnets: name | cidr | az | public
 declare -A SUBNETS=(
@@ -249,6 +265,7 @@ definir_nomes_buckets() {
     BUCKET_BRONZE="arandu-bronze-${S3_MEMBRO}-${account_id}"
     BUCKET_SILVER="arandu-silver-${S3_MEMBRO}-${account_id}"
     BUCKET_GOLD="arandu-gold-${S3_MEMBRO}-${account_id}"
+    BUCKET_BACKUPS="arandu-backups-${account_id}"
 }
 
 criar_bucket_s3() {
@@ -268,8 +285,9 @@ criar_bucket_s3() {
 
 criar_s3() {
     definir_nomes_buckets
-    log "Provisionando buckets S3 (Documentos e Medalhão: Bronze, Silver, Gold)..."
+    log "Provisionando buckets S3 (Documentos, Backups e Medalhão: Bronze, Silver, Gold)..."
     criar_bucket_s3 "$S3_BUCKET"
+    criar_bucket_s3 "$BUCKET_BACKUPS"
     criar_bucket_s3 "$BUCKET_BRONZE"
     criar_bucket_s3 "$BUCKET_SILVER"
     criar_bucket_s3 "$BUCKET_GOLD"
@@ -291,6 +309,7 @@ deletar_s3() {
     log "Removendo buckets S3..."
     definir_nomes_buckets
     deletar_bucket_s3 "$S3_BUCKET"
+    deletar_bucket_s3 "$BUCKET_BACKUPS"
     deletar_bucket_s3 "$BUCKET_BRONZE"
     deletar_bucket_s3 "$BUCKET_SILVER"
     deletar_bucket_s3 "$BUCKET_GOLD"
@@ -692,6 +711,113 @@ criar_rds() {
         --output text
 }
 
+# -----------------------------------------------------------------------------
+# Backup diário do banco — script + Cron Job na EC2 de backend
+# -----------------------------------------------------------------------------
+criar_sns_backup() {
+    log "Criando tópico SNS de aviso do backup ($BACKUP_SNS_TOPIC_NAME)..." >&2
+    BACKUP_SNS_TOPIC_ARN=$(aws sns create-topic \
+        --name "$BACKUP_SNS_TOPIC_NAME" \
+        --query TopicArn --output text 2>/dev/null)
+
+    if [[ -z "$BACKUP_SNS_TOPIC_ARN" || "$BACKUP_SNS_TOPIC_ARN" == "None" ]]; then
+        warn "Não foi possível criar o tópico SNS — o backup rodará sem aviso." >&2
+        BACKUP_SNS_TOPIC_ARN=""
+        return 0
+    fi
+
+    local ja_inscrito
+    ja_inscrito=$(aws sns list-subscriptions-by-topic \
+        --topic-arn "$BACKUP_SNS_TOPIC_ARN" \
+        --query "Subscriptions[?Endpoint=='${BACKUP_EMAIL_TO}'].SubscriptionArn" \
+        --output text 2>/dev/null)
+
+    if [[ -z "$ja_inscrito" ]]; then
+        aws sns subscribe \
+            --topic-arn "$BACKUP_SNS_TOPIC_ARN" \
+            --protocol email \
+            --notification-endpoint "$BACKUP_EMAIL_TO" > /dev/null 2>&1
+        warn "Confirme a inscrição no e-mail enviado para ${BACKUP_EMAIL_TO} (assunto 'AWS Notification - Subscription Confirmation')." >&2
+    fi
+}
+
+deletar_sns_backup() {
+    log "Removendo tópico SNS do backup..."
+    local arn
+    arn=$(aws sns list-topics \
+        --query "Topics[?contains(TopicArn, '${BACKUP_SNS_TOPIC_NAME}')].TopicArn" \
+        --output text 2>/dev/null)
+    [[ -n "$arn" && "$arn" != "None" ]] && safe_delete aws sns delete-topic --topic-arn "$arn"
+}
+
+gerar_trecho_backup() {
+    local rds_endpoint=$1
+
+    if [[ ! -f "$BACKUP_SCRIPT_PATH" ]]; then
+        warn "Script de backup não encontrado em '$BACKUP_SCRIPT_PATH' — a EC2 subirá sem o backup diário." >&2
+        return 0
+    fi
+
+    # O script vai em base64 para atravessar o user data sem que o shell local
+    # expanda as variáveis dele.
+    local script_b64
+    script_b64=$(base64 -w0 "$BACKUP_SCRIPT_PATH")
+
+    cat <<EOF
+
+mkdir -p /etc/arandu /opt/arandu /var/backups/arandu
+chmod 700 /var/backups/arandu
+
+cat << 'BACKUPENV' > /etc/arandu/backup.env
+DB_HOST='${rds_endpoint}'
+DB_NAME='${RDS_DB_NAME}'
+DB_USER='${RDS_USERNAME}'
+DB_PASSWORD='${RDS_PASSWORD}'
+S3_BUCKET='${BUCKET_BACKUPS}'
+S3_PREFIX='${BACKUP_S3_PREFIX}'
+AWS_REGION='${REGIAO}'
+BACKUP_DIR='/var/backups/arandu'
+LOCAL_RETENTION_DAYS='${BACKUP_LOCAL_RETENTION_DAYS}'
+S3_RETENTION_DAYS='${BACKUP_S3_RETENTION_DAYS}'
+SNS_TOPIC_ARN='${BACKUP_SNS_TOPIC_ARN}'
+MAIL_TO='${BACKUP_EMAIL_TO}'
+MAIL_FROM='${SPRING_MAILSENDER_USERNAME}'
+MAIL_SMTP='${BACKUP_MAIL_SMTP}'
+MAIL_USERNAME='${SPRING_MAILSENDER_USERNAME}'
+MAIL_PASSWORD='${SPRING_MAILSENDER_PASSWORD}'
+BACKUPENV
+chmod 600 /etc/arandu/backup.env
+
+echo '${script_b64}' | base64 -d > /opt/arandu/backup_banco.sh
+chmod 700 /opt/arandu/backup_banco.sh
+
+touch /var/log/arandu-backup.log
+chmod 640 /var/log/arandu-backup.log
+
+cat << 'BACKUPCRON' > /etc/cron.d/arandu-backup
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+# Backup completo do banco Arandu (horario em UTC)
+${BACKUP_CRON} root /opt/arandu/backup_banco.sh >> /var/log/arandu-backup.log 2>&1
+BACKUPCRON
+chmod 644 /etc/cron.d/arandu-backup
+
+cat << 'BACKUPROTATE' > /etc/logrotate.d/arandu-backup
+/var/log/arandu-backup.log {
+  weekly
+  rotate 8
+  compress
+  missingok
+  notifempty
+  copytruncate
+}
+BACKUPROTATE
+
+systemctl enable cron
+systemctl restart cron
+EOF
+}
+
 gerar_user_data_backend() {
     local rds_endpoint=$1 s3_bucket=$2
     local imagem="$ECR_REGISTRY/$ECR_REPO:backend"
@@ -699,7 +825,7 @@ gerar_user_data_backend() {
 #!/bin/bash
 until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
 apt-get update -y
-apt-get install -y mysql-client curl docker.io awscli
+apt-get install -y mysql-client curl docker.io awscli cron
 
 until mysql -h "${rds_endpoint}" -u "${RDS_USERNAME}" -p"${RDS_PASSWORD}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
 
@@ -730,6 +856,7 @@ DEPLOY
 chmod 700 /opt/arandu/deploy.sh
 /opt/arandu/deploy.sh
 EOF
+    gerar_trecho_backup "$rds_endpoint"
 }
 
 deletar_rds() {
@@ -1242,6 +1369,8 @@ criar_infraestrutura() {
     log "Criando RDS MySQL..."
     RDS_ENDPOINT=$(criar_rds "$SG_DB" "$SUBNET_DB" "$SUBNET_DB_2")
 
+    criar_sns_backup
+
     log "Gerando user data do backend..."
     gerar_user_data_backend "$RDS_ENDPOINT" "$S3_BUCKET" > user_data_backend.sh
 
@@ -1295,6 +1424,7 @@ deletar_infraestrutura() {
     deletar_enis
     deletar_security_groups
     deletar_s3
+    deletar_sns_backup
     deletar_iam_backend
     deletar_ecr
 

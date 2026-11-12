@@ -32,8 +32,15 @@ resource "aws_iam_role_policy" "backend_s3" {
         ]
         Resource = [
           local.bucket_documentos_arn,
-          "${local.bucket_documentos_arn}/*"
+          "${local.bucket_documentos_arn}/*",
+          local.bucket_backups_arn,
+          "${local.bucket_backups_arn}/*"
         ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = [aws_sns_topic.backup.arn]
       }
     ]
   })

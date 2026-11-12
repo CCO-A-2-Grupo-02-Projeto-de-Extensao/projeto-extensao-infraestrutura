@@ -1,4 +1,5 @@
-# S3: Armazenamento de Documentos da Aplicacao e Arquitetura Medalhao (Bronze, Silver, Gold)
+# S3: Armazenamento de Documentos da Aplicacao, Backups do Banco e Arquitetura Medalhao
+# (Bronze, Silver, Gold)
 #
 # Os buckets sao criados via AWS CLI, e nao com o recurso aws_s3_bucket, porque a
 # Service Control Policy do AWS Academy nega s3:GetBucketObjectLockConfiguration.
@@ -10,13 +11,16 @@ locals {
   bucket_bronze_name     = var.bucket_bronze_name != null ? var.bucket_bronze_name : "arandu-bronze-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
   bucket_silver_name     = var.bucket_silver_name != null ? var.bucket_silver_name : "arandu-silver-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
   bucket_gold_name       = var.bucket_gold_name != null ? var.bucket_gold_name : "arandu-gold-${var.s3_member_tag}-${data.aws_caller_identity.current.account_id}"
+  bucket_backups_name    = var.bucket_backups_name != null ? var.bucket_backups_name : "arandu-backups-${data.aws_caller_identity.current.account_id}"
   bucket_documentos_arn  = "arn:aws:s3:::${local.bucket_documentos_name}"
+  bucket_backups_arn     = "arn:aws:s3:::${local.bucket_backups_name}"
 
   buckets = {
     documentos = local.bucket_documentos_name
     bronze     = local.bucket_bronze_name
     silver     = local.bucket_silver_name
     gold       = local.bucket_gold_name
+    backups    = local.bucket_backups_name
   }
 }
 

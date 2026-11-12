@@ -252,3 +252,45 @@ variable "mail_password" {
   default     = "senha-de-app-do-google"
   sensitive   = true
 }
+
+variable "bucket_backups_name" {
+  description = "Nome do bucket dos backups do banco"
+  type        = string
+  default     = null
+}
+
+variable "backup_email_to" {
+  description = "E-mail do administrador avisado sobre o backup diario"
+  type        = string
+  default     = "pedroclaudinob4rbosa@gmail.com"
+}
+
+variable "backup_cron_schedule" {
+  description = "Agenda do Cron Job de backup, em UTC (padrao: 06:00 UTC = 03:00 em Brasilia)"
+  type        = string
+  default     = "0 6 * * *"
+}
+
+variable "backup_s3_prefix" {
+  description = "Prefixo dos backups dentro do bucket"
+  type        = string
+  default     = "backups/banco"
+}
+
+variable "backup_local_retention_days" {
+  description = "Dias de retencao das copias locais na EC2 (0 desativa a limpeza)"
+  type        = number
+  default     = 3
+}
+
+variable "backup_s3_retention_days" {
+  description = "Dias de retencao dos backups no S3 (0 desativa a limpeza)"
+  type        = number
+  default     = 30
+}
+
+variable "backup_mail_smtp" {
+  description = "Servidor SMTP usado pelo script de backup para avisar o administrador"
+  type        = string
+  default     = "smtp://smtp.gmail.com:587"
+}

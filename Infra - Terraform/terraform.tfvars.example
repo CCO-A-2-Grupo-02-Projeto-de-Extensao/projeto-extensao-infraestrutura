@@ -1,0 +1,28 @@
+# Copie para terraform.tfvars e preencha. O terraform.tfvars nao e versionado
+# (esta no .gitignore) justamente por carregar segredos.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+# --- SMTP (Gmail) -------------------------------------------------------------
+# Conta que autentica no SMTP e assina os e-mails do backend e do backup.
+# A senha precisa ser uma SENHA DE APP do Google (16 caracteres, exige 2FA),
+# a senha normal da conta nao autentica em SMTP.
+mail_username = "conta-do-grupo@gmail.com"
+mail_password = "xxxx xxxx xxxx xxxx"
+
+# --- Backup diario do banco ---------------------------------------------------
+# Quem recebe o aviso de sucesso ou de falha do backup.
+# backup_email_to = "pedroclaudinob4rbosa@gmail.com"
+# Agenda do Cron Job, em UTC (06:00 UTC = 03:00 em Brasilia).
+# backup_cron_schedule = "0 6 * * *"
+# backup_local_retention_days = 3
+# backup_s3_retention_days    = 30
+
+# --- Banco e aplicacao --------------------------------------------------------
+# Deixe comentado para o Terraform gerar senha e segredo aleatorios a cada apply.
+# rds_password = "defina-uma-senha"
+# jwt_secret   = "defina-um-segredo"
+
+# --- S3 -----------------------------------------------------------------------
+# Sufixo que evita conflito de nome entre os integrantes do grupo.
+# s3_member_tag = "pedro"

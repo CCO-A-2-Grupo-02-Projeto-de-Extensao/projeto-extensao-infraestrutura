@@ -58,7 +58,7 @@ chown ubuntu:ubuntu /home/ubuntu/.ssh/arandu-key.pem
 #!/bin/bash
 until curl -4 --max-time 5 -s https://google.com > /dev/null 2>&1; do sleep 10; done
 apt-get update -y
-apt-get install -y mysql-client curl docker.io awscli
+apt-get install -y mysql-client curl docker.io awscli cron
 
 until mysql -h "${aws_db_instance.arandu.address}" -u "${var.rds_username}" -p"${local.rds_password}" -e "SELECT 1;" > /dev/null 2>&1; do sleep 15; done
 
@@ -117,6 +117,7 @@ DEPLOY
 chmod 700 /opt/arandu/deploy.sh
 /opt/arandu/deploy.sh
 
+${local.backup_install}
   EOF
 }
 
@@ -167,14 +168,14 @@ resource "aws_instance" "frontend_2" {
 }
 
 resource "aws_instance" "backend" {
-  ami                  = data.aws_ami.ubuntu.id
-  instance_type        = var.instance_type
-  key_name             = aws_key_pair.arandu.key_name
-  subnet_id            = aws_subnet.subnets["backend"].id
-  private_ip           = "10.0.2.10"
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  key_name               = aws_key_pair.arandu.key_name
+  subnet_id              = aws_subnet.subnets["backend"].id
+  private_ip             = "10.0.2.10"
   vpc_security_group_ids = [aws_security_group.backend.id]
-  iam_instance_profile = local.instance_profile_name
-  user_data            = local.user_data_backend
+  iam_instance_profile   = local.instance_profile_name
+  user_data              = local.user_data_backend
 
   tags = {
     Name = "ec2-arandu-backend"
@@ -184,6 +185,7 @@ resource "aws_instance" "backend" {
   depends_on = [
     aws_nat_gateway.nat,
     aws_db_instance.arandu,
+    terraform_data.buckets,
     terraform_data.ecr_sync
   ]
 }
