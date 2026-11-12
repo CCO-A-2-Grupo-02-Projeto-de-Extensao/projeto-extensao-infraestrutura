@@ -758,10 +758,11 @@ gerar_trecho_backup() {
         return 0
     fi
 
-    # O script vai em base64 para atravessar o user data sem que o shell local
-    # expanda as variáveis dele.
-    local script_b64
-    script_b64=$(base64 -w0 "$BACKUP_SCRIPT_PATH")
+    # O script vai em gzip+base64 para atravessar o user data sem que o shell
+    # local expanda as variáveis dele e sem estourar o limite de 16 KB do user
+    # data da AWS (em base64 puro o script sozinho consome 12,8 KB).
+    local script_gz
+    script_gz=$(gzip -9 -c "$BACKUP_SCRIPT_PATH" | base64 -w0)
 
     cat <<EOF
 
@@ -788,7 +789,7 @@ MAIL_PASSWORD='${SPRING_MAILSENDER_PASSWORD}'
 BACKUPENV
 chmod 600 /etc/arandu/backup.env
 
-echo '${script_b64}' | base64 -d > /opt/arandu/backup_banco.sh
+echo '${script_gz}' | base64 -d | gunzip -c > /opt/arandu/backup_banco.sh
 chmod 700 /opt/arandu/backup_banco.sh
 
 touch /var/log/arandu-backup.log

@@ -5,9 +5,11 @@
 # dump SQL com a data ISO no nome, envia para o bucket S3 de backups e notifica o
 # administrador por e-mail no sucesso e no erro.
 #
-# O script vai embutido no user data em base64: o user data é um heredoc
+# O script vai embutido no user data em gzip+base64: o user data é um heredoc
 # interpolado pelo Terraform, e qualquer ${VAR} do shell seria lido como
-# interpolação. Em base64 o conteúdo trafega intacto.
+# interpolação. Em base64 o conteúdo trafega intacto, e o gzip é necessário
+# porque o user data da AWS tem limite de 16 KB — só o script em base64 puro
+# consome 12,8 KB dos 16,3 KB que o user data do backend ocupa no total.
 
 # O aviso sai por SNS: a AWS bloqueia a saida SMTP (25/465/587) nas instancias
 # EC2 de contas sandbox, entao o envio direto por Gmail nao completa a conexao.
@@ -28,8 +30,8 @@ resource "aws_sns_topic_subscription" "backup_email" {
 }
 
 locals {
-  backup_script_b64 = base64encode(file("${path.module}/scripts/backup_banco.sh"))
-  backup_mail_to    = var.backup_email_to != null ? var.backup_email_to : local.mail_username
+  backup_script_gz = base64gzip(file("${path.module}/scripts/backup_banco.sh"))
+  backup_mail_to   = var.backup_email_to != null ? var.backup_email_to : local.mail_username
 
   # Trecho acrescentado ao user data do backend (ver compute.tf).
   backup_install = <<-EOF
@@ -56,7 +58,7 @@ MAIL_PASSWORD='${local.mail_password}'
 BACKUPENV
 chmod 600 /etc/arandu/backup.env
 
-echo '${local.backup_script_b64}' | base64 -d > /opt/arandu/backup_banco.sh
+echo '${local.backup_script_gz}' | base64 -d | gunzip -c > /opt/arandu/backup_banco.sh
 chmod 700 /opt/arandu/backup_banco.sh
 
 touch /var/log/arandu-backup.log
