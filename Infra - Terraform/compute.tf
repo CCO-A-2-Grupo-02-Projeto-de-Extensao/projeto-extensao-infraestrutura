@@ -106,8 +106,8 @@ docker run -d \
   -e APP_STORAGE_S3_REGION="${var.aws_region}" \
   -e SPRING_RABBITMQ_HOST="rabbitmq" \
   -e SPRING_RABBITMQ_PORT="5672" \
-  -e SPRING_RABBITMQ_USERNAME="admin" \
-  -e SPRING_RABBITMQ_PASSWORD="admin" \
+  -e SPRING_DATASOURCE_USERNAME_RABBITMQ="admin" \
+  -e SPRING_DATASOURCE_PASSWORD_RABBITMQ="admin" \
   -e SPRING_MAILSENDER_HOST="smtp.gmail.com" \
   -e SPRING_MAILSENDER_PORT="587" \
   -e SPRING_MAILSENDER_USERNAME="${local.mail_username}" \
