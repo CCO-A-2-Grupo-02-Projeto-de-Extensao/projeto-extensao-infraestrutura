@@ -97,6 +97,7 @@ docker run -d \
   --network arandu-network \
   --restart unless-stopped \
   -p 8080:8080 \
+  -p 587:587 \
   -e SPRING_DATASOURCE_URL="jdbc:mysql://${aws_db_instance.arandu.address}:3306/${var.rds_db_name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" \
   -e SPRING_DATASOURCE_USERNAME="${var.rds_username}" \
   -e SPRING_DATASOURCE_PASSWORD="${local.rds_password}" \
@@ -106,8 +107,8 @@ docker run -d \
   -e APP_STORAGE_S3_REGION="${var.aws_region}" \
   -e SPRING_RABBITMQ_HOST="rabbitmq" \
   -e SPRING_RABBITMQ_PORT="5672" \
-  -e SPRING_RABBITMQ_USERNAME="admin" \
-  -e SPRING_RABBITMQ_PASSWORD="admin" \
+  -e SPRING_DATASOURCE_USERNAME_RABBITMQ="admin" \
+  -e SPRING_DATASOURCE_PASSWORD_RABBITMQ="admin" \
   -e SPRING_MAILSENDER_HOST="smtp.gmail.com" \
   -e SPRING_MAILSENDER_PORT="587" \
   -e SPRING_MAILSENDER_USERNAME="${local.mail_username}" \
