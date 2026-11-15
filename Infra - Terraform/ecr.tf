@@ -22,6 +22,10 @@ resource "terraform_data" "ecr_sync" {
         docker tag "$imagem" "${aws_ecr_repository.arandu.repository_url}:$${imagem##*:}"
         docker push -q "${aws_ecr_repository.arandu.repository_url}:$${imagem##*:}"
       done
+      docker build -q -t "${local.grafana_ecr_image}" -f Dockerfile.grafana "${var.grafana_git_url}:grafana"
+      docker build -q -t "${local.grafana_dados_image}" -f grafana/Dockerfile.dados "${var.grafana_git_url}"
+      docker push -q "${local.grafana_ecr_image}"
+      docker push -q "${local.grafana_dados_image}"
     EOF
   }
 }

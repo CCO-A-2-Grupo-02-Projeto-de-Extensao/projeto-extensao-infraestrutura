@@ -106,6 +106,14 @@ resource "aws_security_group" "backend" {
   }
 
   ingress {
+    description     = "Grafana vindo do ALB"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
     description     = "SSH interno vindo do frontend"
     from_port       = 22
     to_port         = 22

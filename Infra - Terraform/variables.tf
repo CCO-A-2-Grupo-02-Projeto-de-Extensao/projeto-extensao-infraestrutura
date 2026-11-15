@@ -204,6 +204,31 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
+variable "grafana_admin_password" {
+  description = "Senha do admin do Grafana; vazio gera uma aleatoria"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "grafana_demo" {
+  description = "Grava os dados de demonstracao do Grafana no RDS"
+  type        = bool
+  default     = true
+}
+
+variable "grafana_git_url" {
+  description = "Repo de onde as imagens do Grafana sao buildadas"
+  type        = string
+  default     = "https://github.com/CCO-A-2-Grupo-02-Projeto-de-Extensao/projeto-extensao-documentacao.git#main"
+}
+
+variable "tg_grafana_name" {
+  description = "Nome do target group do Grafana"
+  type        = string
+  default     = "tg-arandu-grafana"
+}
+
 variable "use_lab_instance_profile" {
   description = "Usar LabInstanceProfile da AWS Academy"
   type        = bool

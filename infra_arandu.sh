@@ -46,6 +46,15 @@ IAM_PROFILE_NAME="arandu-backend-profile"
 SPRING_MAILSENDER_USERNAME="${SPRING_MAILSENDER_USERNAME:-"teste@email.com"}"
 SPRING_MAILSENDER_PASSWORD="${SPRING_MAILSENDER_PASSWORD:-"teste"}"
 
+# Grafana de análise de dados — roda na EC2 de backend e sai pelo ALB em /grafana.
+# As imagens são buildadas do repo de documentação, que precisa continuar público.
+# GRAFANA_DEMO=0 desliga os dados de demonstração gravados no RDS.
+GRAFANA_GIT_URL="https://github.com/CCO-A-2-Grupo-02-Projeto-de-Extensao/projeto-extensao-documentacao.git#main"
+GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-$(openssl rand -hex 12)}"
+GRAFANA_DB_PASSWORD="${GRAFANA_DB_PASSWORD:-$(openssl rand -hex 16)}"
+GRAFANA_DEMO="${GRAFANA_DEMO:-1}"
+TG_GRAFANA_NAME="tg-arandu-grafana"
+
 # S3 — Identificador e Buckets (Armazenamento e Arquitetura Medalhão)
 # O identificador do membro evita conflito de nomes globais no S3 entre integrantes do grupo.
 # Para customizar, execute por exemplo: S3_MEMBRO=outro_membro ./infra_arandu.sh
@@ -351,7 +360,10 @@ obter_instance_profile() {
                 \"Action\": [\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],
                 \"Resource\": [
                     \"arn:aws:s3:::${s3_bucket}\",
-                    \"arn:aws:s3:::${s3_bucket}/*\"
+                    \"arn:aws:s3:::${s3_bucket}/*\",
+                    \"arn:aws:s3:::${BUCKET_BRONZE}\",
+                    \"arn:aws:s3:::${BUCKET_SILVER}\",
+                    \"arn:aws:s3:::${BUCKET_GOLD}\"
                 ]
             }]
         }" > /dev/null
@@ -400,6 +412,13 @@ sincronizar_ecr() {
         docker tag "$imagem" "$destino"
         docker push -q "$destino" > /dev/null
         log "Imagem publicada: $destino"
+    done
+    log "Buildando as imagens do Grafana a partir do repo de documentação..."
+    docker build -q -t "$ECR_REGISTRY/$ECR_REPO:grafana" -f Dockerfile.grafana "$GRAFANA_GIT_URL:grafana" > /dev/null
+    docker build -q -t "$ECR_REGISTRY/$ECR_REPO:grafana-dados" -f grafana/Dockerfile.dados "$GRAFANA_GIT_URL" > /dev/null
+    for tag in grafana grafana-dados; do
+        docker push -q "$ECR_REGISTRY/$ECR_REPO:$tag" > /dev/null
+        log "Imagem publicada: $ECR_REGISTRY/$ECR_REPO:$tag"
     done
 }
 
@@ -643,6 +662,32 @@ configurar_backend_alb() {
         priority=$((priority + 10))
     done
     log "ALB roteado: Swagger, /auth*, /usuarios*, /documentos* e demais APIs → backend" >&2
+
+    local old_tg_grafana=$(get_tg_arn "$TG_GRAFANA_NAME")
+    [[ -n "$old_tg_grafana" ]] && safe_delete aws elbv2 delete-target-group --target-group-arn "$old_tg_grafana"
+
+    local tg_grafana
+    tg_grafana=$(aws elbv2 create-target-group \
+        --name "$TG_GRAFANA_NAME" \
+        --protocol HTTP \
+        --port 3000 \
+        --vpc-id "$VPC_ID" \
+        --target-type instance \
+        --health-check-protocol HTTP \
+        --health-check-path "/grafana/api/health" \
+        --query 'TargetGroups[0].TargetGroupArn' \
+        --output text)
+
+    aws elbv2 register-targets \
+        --target-group-arn "$tg_grafana" \
+        --targets "Id=$backend_id,Port=3000" > /dev/null
+
+    aws elbv2 create-rule \
+        --listener-arn "$ALB_LISTENER_ARN" \
+        --conditions '[{"Field":"path-pattern","Values":["/grafana*"]}]' \
+        --priority "$priority" \
+        --actions "Type=forward,TargetGroupArn=$tg_grafana" > /dev/null
+    log "ALB roteado: /grafana* → Grafana na EC2 de backend" >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -853,6 +898,15 @@ for i in \$(seq 1 30); do
 done
 docker rm -f backend 2>/dev/null || true
 docker run -d --name backend --network arandu-network --restart unless-stopped -p 8080:8080 -e SPRING_DATASOURCE_URL="jdbc:mysql://${rds_endpoint}:3306/${RDS_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" -e SPRING_DATASOURCE_USERNAME="${RDS_USERNAME}" -e SPRING_DATASOURCE_PASSWORD="${RDS_PASSWORD}" -e JWT_SECRET="${JWT_SECRET}" -e APP_STORAGE_TYPE="s3" -e APP_STORAGE_S3_BUCKET="${s3_bucket}" -e APP_STORAGE_S3_REGION="${REGIAO}" -e SPRING_RABBITMQ_HOST="rabbitmq" -e SPRING_RABBITMQ_PORT="5672" -e SPRING_RABBITMQ_USERNAME="admin" -e SPRING_RABBITMQ_PASSWORD="admin" -e SPRING_RABBITMQ_PASSWORD="admin" -e SPRING_MAILSENDER_USERNAME="${SPRING_MAILSENDER_USERNAME}" -e SPRING_MAILSENDER_PASSWORD="${SPRING_MAILSENDER_PASSWORD}" ${imagem}
+docker pull ${ECR_REGISTRY}/${ECR_REPO}:grafana-dados
+docker pull ${ECR_REGISTRY}/${ECR_REPO}:grafana
+for i in \$(seq 1 60); do
+    curl -sf http://localhost:8080/v3/api-docs > /dev/null && break
+    sleep 10
+done
+docker run --rm --network host -e ARANDU_DB_HOST="${rds_endpoint}" -e ARANDU_DB_NAME="${RDS_DB_NAME}" -e ARANDU_DB_ROOT_USER="${RDS_USERNAME}" -e ARANDU_DB_ROOT_PASSWORD="${RDS_PASSWORD}" -e ARANDU_GRAFANA_DB_PASSWORD="${GRAFANA_DB_PASSWORD}" -e ARANDU_DEMO="${GRAFANA_DEMO}" -e ARANDU_BUCKETS="bronze=${BUCKET_BRONZE},silver=${BUCKET_SILVER},gold=${BUCKET_GOLD}" -e AWS_DEFAULT_REGION="${REGIAO}" ${ECR_REGISTRY}/${ECR_REPO}:grafana-dados || echo "Carga do Grafana falhou"
+docker rm -f grafana 2>/dev/null || true
+docker run -d --name grafana --restart unless-stopped -p 3000:3000 -e GF_SECURITY_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD}" -e GF_SERVER_ROOT_URL="%(protocol)s://%(domain)s/grafana/" -e GF_SERVER_SERVE_FROM_SUB_PATH=true -e ARANDU_DB_HOST="${rds_endpoint}:3306" -e ARANDU_DB_NAME="${RDS_DB_NAME}" -e ARANDU_DB_PASSWORD="${GRAFANA_DB_PASSWORD}" ${ECR_REGISTRY}/${ECR_REPO}:grafana
 DEPLOY
 chmod 700 /opt/arandu/deploy.sh
 /opt/arandu/deploy.sh
@@ -1323,6 +1377,7 @@ criar_infraestrutura() {
     SG_BACKEND=$(criar_sg "arandu-sg-backend" "SG Backend Arandu")
     sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_FRONTEND"
     sg_ingress "$SG_BACKEND"  tcp 8080 sg     "$SG_ALB"
+    sg_ingress "$SG_BACKEND"  tcp 3000 sg     "$SG_ALB"
     sg_ingress "$SG_BACKEND"  tcp 22   sg     "$SG_FRONTEND"
     SG_DB=$(criar_sg "arandu-sg-db" "SG Database Arandu")
     sg_ingress "$SG_DB"       tcp 3306 sg     "$SG_BACKEND"
@@ -1403,6 +1458,7 @@ criar_infraestrutura() {
     log "RDS Password:       $RDS_PASSWORD  ← gerada agora, anote se for conectar no banco"
     log "URL da aplicação:   $APP_URL"
     log "Swagger:            $APP_URL/swagger-ui/index.html"
+    log "Grafana:            $APP_URL/grafana/  (admin / $GRAFANA_ADMIN_PASSWORD  ← gerada agora, anote)"
     log "CloudWatch Dash:    $DASHBOARD_URL"
     log "Teste do balanceador: ./$TESTE_LB_SCRIPT"
     warn "Se abrir antes dos targets ficarem saudáveis, aguarde alguns instantes e atualize a página."

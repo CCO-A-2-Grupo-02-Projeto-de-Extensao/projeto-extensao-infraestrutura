@@ -10,6 +10,15 @@ output "swagger_url" {
   value = "http://${aws_lb.frontend.dns_name}/swagger-ui/index.html"
 }
 
+output "grafana_url" {
+  value = "http://${aws_lb.frontend.dns_name}/grafana/"
+}
+
+output "grafana_admin_password" {
+  value     = local.grafana_admin_password
+  sensitive = true
+}
+
 output "cloudwatch_dashboard_url" {
   value = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${aws_cloudwatch_dashboard.arandu.dashboard_name}"
 }

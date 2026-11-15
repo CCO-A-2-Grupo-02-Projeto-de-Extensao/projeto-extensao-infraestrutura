@@ -38,6 +38,15 @@ resource "aws_iam_role_policy" "backend_s3" {
         ]
       },
       {
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          "arn:aws:s3:::${local.bucket_bronze_name}",
+          "arn:aws:s3:::${local.bucket_silver_name}",
+          "arn:aws:s3:::${local.bucket_gold_name}"
+        ]
+      },
+      {
         Effect   = "Allow"
         Action   = ["sns:Publish"]
         Resource = [aws_sns_topic.backup.arn]

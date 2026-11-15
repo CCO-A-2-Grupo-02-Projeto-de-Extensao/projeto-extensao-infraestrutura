@@ -31,6 +31,7 @@ Configuracao declarativa em Terraform para provisionamento da infraestrutura na 
 | `compute.tf` | Lookup de AMI Ubuntu, user data scripts e instâncias EC2 |
 | `alb.tf` | ALB, Target Groups de Frontend e Backend, Listeners e regras de path |
 | `cloudwatch.tf` | Dashboard de métricas unificado no CloudWatch |
+| `grafana.tf` | Senhas, Target Group e regra `/grafana*` do Grafana que roda na EC2 de backend |
 | `backup.tf` | Tópico SNS de aviso e instalação do script, da configuração e do Cron Job na EC2 de backend |
 | `scripts/backup_banco.sh` | Backup completo diário do banco: dump SQL, envio ao S3, e-mail ao administrador e retenção |
 | `lambda.tf` | Ingestão Bronze, transformação Silver, IAM, agendas e triggers |
@@ -184,13 +185,17 @@ mysql -h <endpoint-do-rds> -u admin -p < <arquivo>.sql
 Apos a aplicacao, os outputs exibirao:
 - URL do ALB
 - URL do Swagger
+- URL do Grafana (`/grafana/` no mesmo ALB)
 - Dashboard do CloudWatch
 
-Para obter a senha gerada do banco ou segredo JWT:
+Para obter a senha gerada do banco, o segredo JWT ou a senha do admin do Grafana:
 ```bash
 terraform output -raw rds_password
 terraform output -raw jwt_secret
+terraform output -raw grafana_admin_password
 ```
+
+As imagens do Grafana são buildadas do repo `projeto-extensao-documentacao` (pasta `grafana/`), que precisa continuar público. Por padrão o RDS recebe os dados de demonstração dos painéis; `grafana_demo = false` no `terraform.tfvars` desliga.
 
 Para conexao SSH:
 ```bash

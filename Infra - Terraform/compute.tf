@@ -114,6 +114,34 @@ docker run -d \
   -e SPRING_MAILSENDER_USERNAME="${local.mail_username}" \
   -e SPRING_MAILSENDER_PASSWORD="${local.mail_password}" \
   "${local.backend_ecr_image}"
+docker pull ${local.grafana_dados_image}
+docker pull ${local.grafana_ecr_image}
+for i in $(seq 1 60); do
+  curl -sf http://localhost:8080/v3/api-docs >/dev/null && break
+  sleep 10
+done
+docker run --rm --network host \
+  -e ARANDU_DB_HOST="${aws_db_instance.arandu.address}" \
+  -e ARANDU_DB_NAME="${var.rds_db_name}" \
+  -e ARANDU_DB_ROOT_USER="${var.rds_username}" \
+  -e ARANDU_DB_ROOT_PASSWORD="${local.rds_password}" \
+  -e ARANDU_GRAFANA_DB_PASSWORD="${local.grafana_db_password}" \
+  -e ARANDU_DEMO="${var.grafana_demo ? "1" : "0"}" \
+  -e ARANDU_BUCKETS="bronze=${local.bucket_bronze_name},silver=${local.bucket_silver_name},gold=${local.bucket_gold_name}" \
+  -e AWS_DEFAULT_REGION="${var.aws_region}" \
+  "${local.grafana_dados_image}" || echo "Carga do Grafana falhou"
+docker rm -f grafana 2>/dev/null || true
+docker run -d \
+  --name grafana \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -e GF_SECURITY_ADMIN_PASSWORD="${local.grafana_admin_password}" \
+  -e GF_SERVER_ROOT_URL="%(protocol)s://%(domain)s/grafana/" \
+  -e GF_SERVER_SERVE_FROM_SUB_PATH=true \
+  -e ARANDU_DB_HOST="${aws_db_instance.arandu.address}:3306" \
+  -e ARANDU_DB_NAME="${var.rds_db_name}" \
+  -e ARANDU_DB_PASSWORD="${local.grafana_db_password}" \
+  "${local.grafana_ecr_image}"
 DEPLOY
 chmod 700 /opt/arandu/deploy.sh
 /opt/arandu/deploy.sh
