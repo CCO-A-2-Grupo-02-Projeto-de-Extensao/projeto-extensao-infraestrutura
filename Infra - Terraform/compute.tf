@@ -198,7 +198,7 @@ resource "aws_instance" "frontend_2" {
 
 resource "aws_instance" "backend" {
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
+  instance_type          = var.backend_instance_type
   key_name               = aws_key_pair.arandu.key_name
   subnet_id              = aws_subnet.subnets["backend"].id
   private_ip             = "10.0.2.10"

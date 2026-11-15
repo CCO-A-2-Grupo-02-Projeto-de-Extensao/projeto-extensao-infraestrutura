@@ -71,9 +71,15 @@ variable "key_name" {
 }
 
 variable "instance_type" {
-  description = "Tipo das instancias EC2"
+  description = "Tipo das instancias EC2 de frontend"
   type        = string
   default     = "t3.micro"
+}
+
+variable "backend_instance_type" {
+  description = "Tipo da EC2 de backend: Spring Boot, RabbitMQ e Grafana nao cabem em 1 GB"
+  type        = string
+  default     = "t3.small"
 }
 
 variable "ami_owner" {

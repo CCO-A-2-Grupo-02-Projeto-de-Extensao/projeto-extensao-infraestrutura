@@ -30,6 +30,8 @@ RDS_USERNAME="admin"
 RDS_PASSWORD="${RDS_PASSWORD:-$(openssl rand -hex 16)}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 RDS_CLASS="db.t3.micro"
+# O backend roda Spring Boot, RabbitMQ e Grafana: com 1 GB de RAM a EC2 trava sem memória.
+BACKEND_INSTANCE_TYPE="t3.small"
 RDS_ENGINE="mysql"
 RDS_ENGINE_VERSION="8.0"
 SQL_URL="https://raw.githubusercontent.com/CCO-A-2-Grupo-02-Projeto-de-Extensao/projeto-extensao-backend/main/bdClubeDesbravadores.sql"
@@ -530,13 +532,14 @@ EOF
 # -----------------------------------------------------------------------------
 criar_instancia() {
     local name=$1 role=$2 subnet=$3 ip=$4 sg=$5 user_data_file=${6:-} iam_profile=${7:-}
-    local extra_flags=()
+    local extra_flags=() tipo="t3.micro"
+    [[ "$role" == "backend" ]] && tipo="$BACKEND_INSTANCE_TYPE"
     [[ -n "$user_data_file" ]] && extra_flags+=(--user-data "file://$user_data_file" --associate-public-ip-address)
     [[ -n "$iam_profile" ]] && extra_flags+=(--iam-instance-profile "Name=$iam_profile")
 
     aws ec2 run-instances \
         --image-id "$IMAGEM_ID" \
-        --instance-type t3.micro \
+        --instance-type "$tipo" \
         --key-name "$KEY_NAME" \
         --subnet-id "$subnet" \
         --private-ip-address "$ip" \
