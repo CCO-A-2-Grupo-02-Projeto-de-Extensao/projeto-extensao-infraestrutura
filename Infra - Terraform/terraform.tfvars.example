@@ -12,7 +12,7 @@ mail_password = "xxxx xxxx xxxx xxxx"
 
 # --- Backup diario do banco ---------------------------------------------------
 # Quem recebe o aviso de sucesso ou de falha do backup.
-# backup_email_to = "pedroclaudinob4rbosa@gmail.com"
+# backup_email_to = "alerta@exemplo.com"
 # Agenda do Cron Job, em UTC (06:00 UTC = 03:00 em Brasilia).
 # backup_cron_schedule = "0 6 * * *"
 # backup_local_retention_days = 3

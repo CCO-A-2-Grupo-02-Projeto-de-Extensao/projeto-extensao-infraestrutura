@@ -262,7 +262,7 @@ variable "bucket_backups_name" {
 variable "backup_email_to" {
   description = "E-mail do administrador avisado sobre o backup diario"
   type        = string
-  default     = "pedroclaudinob4rbosa@gmail.com"
+  default     = "alerta@exemplo.com"
 }
 
 variable "backup_cron_schedule" {

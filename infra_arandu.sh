@@ -64,7 +64,7 @@ BACKUP_CRON="${BACKUP_CRON:-0 6 * * *}"
 BACKUP_S3_PREFIX="${BACKUP_S3_PREFIX:-backups/banco}"
 BACKUP_LOCAL_RETENTION_DAYS="${BACKUP_LOCAL_RETENTION_DAYS:-3}"
 BACKUP_S3_RETENTION_DAYS="${BACKUP_S3_RETENTION_DAYS:-30}"
-BACKUP_EMAIL_TO="${BACKUP_EMAIL_TO:-"pedroclaudinob4rbosa@gmail.com"}"
+BACKUP_EMAIL_TO="${BACKUP_EMAIL_TO:-"alerta@exemplo.com"}"
 BACKUP_MAIL_SMTP="${BACKUP_MAIL_SMTP:-smtp://smtp.gmail.com:587}"
 # O aviso sai por SNS porque a AWS bloqueia a saida SMTP (25/465/587) nas EC2
 # de contas sandbox. A inscricao por e-mail exige um clique de confirmacao.

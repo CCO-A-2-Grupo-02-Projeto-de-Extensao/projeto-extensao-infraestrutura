@@ -154,7 +154,7 @@ notificação está desativada.
 | Variável | Padrão | Função |
 |---|---|---|
 | `backup_cron_schedule` | `0 6 * * *` | Agenda do Cron Job, **em UTC** (06:00 UTC = 03:00 em Brasília) |
-| `backup_email_to` | `pedroclaudinob4rbosa@gmail.com` | Destinatário do aviso |
+| `backup_email_to` | `alerta@exemplo.com` | Destinatário do aviso |
 | `backup_s3_prefix` | `backups/banco` | Prefixo dentro do bucket |
 | `backup_local_retention_days` | `3` | Retenção das cópias locais (0 desativa) |
 | `backup_s3_retention_days` | `30` | Retenção no S3 (0 desativa) |
