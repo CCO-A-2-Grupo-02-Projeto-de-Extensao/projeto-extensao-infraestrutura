@@ -111,3 +111,33 @@ output "ssh_frontend_1" {
 output "ssh_frontend_2" {
   value = "ssh -i arandu-key.pem ubuntu@${aws_instance.frontend_2.public_ip}"
 }
+
+output "zz_resumo" {
+  description = "Resumo impresso no fim do apply, igual ao do infra_arandu.sh"
+  value = nonsensitive(<<-EOT
+
+    URL da aplicação:   http://${aws_lb.frontend.dns_name}
+    Swagger:            http://${aws_lb.frontend.dns_name}/swagger-ui/index.html
+    Grafana:            http://${aws_lb.frontend.dns_name}/grafana/  (admin / ${local.grafana_admin_password})
+    CloudWatch Dash:    https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${aws_cloudwatch_dashboard.arandu.dashboard_name}
+
+    RDS Endpoint:       ${aws_db_instance.arandu.address}
+    RDS Database:       ${aws_db_instance.arandu.db_name}
+    RDS User:           ${aws_db_instance.arandu.username}
+    RDS Password:       ${local.rds_password}
+
+    S3 Documentos:      ${local.bucket_documentos_name}
+    S3 Backups:         ${local.bucket_backups_name}
+    S3 Bronze:          ${local.bucket_bronze_name}
+    S3 Silver:          ${local.bucket_silver_name}
+    S3 Gold:            ${local.bucket_gold_name}
+
+    Imagens (ECR):      ${aws_ecr_repository.arandu.repository_url}:frontend, :backend, :grafana e :grafana-dados
+    EFS ID:             ${aws_efs_file_system.arandu.id}
+    SSH frontend 1:     ssh -i arandu-key.pem ubuntu@${aws_instance.frontend_1.public_ip}
+    SSH frontend 2:     ssh -i arandu-key.pem ubuntu@${aws_instance.frontend_2.public_ip}
+
+    Se abrir antes dos targets ficarem saudáveis, aguarde alguns minutos e atualize a página.
+  EOT
+  )
+}

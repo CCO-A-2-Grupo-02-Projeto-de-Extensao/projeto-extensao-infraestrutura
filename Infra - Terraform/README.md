@@ -182,6 +182,11 @@ mysql -h <endpoint-do-rds> -u admin -p < <arquivo>.sql
 
 ## Acessos
 
+No fim do `apply` sai o `zz_resumo`, com URLs, senhas do RDS e do Grafana, buckets, imagens e SSH, no mesmo formato do resumo do `infra_arandu.sh`. Para ver de novo depois:
+```bash
+terraform output -raw zz_resumo
+```
+
 Apos a aplicacao, os outputs exibirao:
 - URL do ALB
 - URL do Swagger
